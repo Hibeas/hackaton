@@ -4,6 +4,7 @@ import type { PortConfig } from '../constants/ports'
 import type {
   BottlenecksResponse,
   CorridorsResponse,
+  DelayForecastResponse,
   EngineEvent,
   EngineEventsResponse,
 } from '../types/engine'
@@ -21,11 +22,13 @@ interface EngineDashboardProps {
   engineEvents: EngineEventsResponse | null
   corridors: CorridorsResponse | null
   bottlenecks: BottlenecksResponse | null
+  delayForecasts: DelayForecastResponse | null | undefined
   portOperations: PortOperationsPayload | null | undefined
   selectedPortId: string
   selectedCorridorId: string | null
   onPortSelect: (portId: string) => void
   onCorridorSelect: (corridorId: string) => void
+  onPortFlyTo?: (portId: string) => void
 }
 
 export function EngineDashboard({
@@ -33,11 +36,13 @@ export function EngineDashboard({
   engineEvents,
   corridors,
   bottlenecks,
+  delayForecasts,
   portOperations,
   selectedPortId,
   selectedCorridorId,
   onPortSelect,
   onCorridorSelect,
+  onPortFlyTo,
 }: EngineDashboardProps) {
   const { t, i18n } = useTranslation()
 
@@ -75,6 +80,16 @@ export function EngineDashboard({
     return map
   }, [engineEvents])
 
+  const forecastsByCorridor = useMemo(() => {
+    const map = new Map<string, DelayForecastResponse['forecasts']>()
+    for (const item of delayForecasts?.forecasts ?? []) {
+      const list = map.get(item.corridor_id) ?? []
+      list.push(item)
+      map.set(item.corridor_id, list)
+    }
+    return map
+  }, [delayForecasts])
+
   const selectedEvent = selectedCorridorId
     ? eventsByCorridor.get(selectedCorridorId)
     : portEvents[0]
@@ -94,6 +109,11 @@ export function EngineDashboard({
           {' · '}
           {t('engine.activeEvents')}: {engineEvents?.active_count ?? 0}
         </p>
+        {delayForecasts?.generated_at ? (
+          <p className="sidebar__meta">
+            {t('engine.forecast.updatedAt')}: {formatDateTime(delayForecasts.generated_at, i18n.language)}
+          </p>
+        ) : null}
       </header>
 
       <PortOpsPanel portOperations={portOperations} selectedPortId={selectedPortId} />
@@ -102,17 +122,22 @@ export function EngineDashboard({
         ports={sortedPorts}
         selectedPortId={selectedPortId}
         onSelect={onPortSelect}
+        onFlyTo={onPortFlyTo}
         eventCounts={eventCounts}
       />
 
       <section className="sidebar__section">
         <h2>{t('engine.corridors')}</h2>
+        {delayForecasts ? (
+          <p className="sidebar__meta sidebar__meta--forecast-hint">{t('engine.forecast.hint')}</p>
+        ) : null}
         <div className="corridor-list">
           {portCorridors.map((snapshot) => (
             <CorridorCard
               key={snapshot.corridor_id}
               snapshot={snapshot}
               event={eventsByCorridor.get(snapshot.corridor_id)}
+              forecasts={forecastsByCorridor.get(snapshot.corridor_id)}
               isSelected={selectedCorridorId === snapshot.corridor_id}
               onSelect={() => onCorridorSelect(snapshot.corridor_id)}
             />

@@ -15,6 +15,8 @@ import type { CorridorBbox, LatLng } from '../constants/ports'
 import {
   MAP_DEFAULT_CENTER,
   MAP_DEFAULT_ZOOM,
+  MAP_REGION_ORDER,
+  MAP_REGION_VIEWS,
   TRAFFIC_STATUS_COLORS,
 } from '../constants/traffic'
 import type { HeatmapPoint, MapDataLayer, TrafficEvent, TrafficStatus } from '../types/traffic'
@@ -37,9 +39,33 @@ interface TrafficMapProps {
   terminals?: TerminalCatalogEntry[]
   focusBbox?: CorridorBbox | null
   focusPolygon?: LatLng[] | null
+  layoutRevision?: number
+  flyRevision?: number
+  onRegionSelect?: (portId: string) => void
 }
 
-function FlyToBbox({ bbox }: { bbox?: CorridorBbox | null }) {
+function MapLayoutRefresh({ revision }: { revision: number }) {
+  const map = useMap()
+
+  useEffect(() => {
+    const immediate = window.setTimeout(() => map.invalidateSize(), 0)
+    const afterTransition = window.setTimeout(() => map.invalidateSize(), 320)
+    return () => {
+      window.clearTimeout(immediate)
+      window.clearTimeout(afterTransition)
+    }
+  }, [map, revision])
+
+  return null
+}
+
+function FlyToBbox({
+  bbox,
+  flyRevision = 0,
+}: {
+  bbox?: CorridorBbox | null
+  flyRevision?: number
+}) {
   const map = useMap()
 
   useEffect(() => {
@@ -53,7 +79,7 @@ function FlyToBbox({ bbox }: { bbox?: CorridorBbox | null }) {
       ],
       { padding: [48, 48], maxZoom: 14 },
     )
-  }, [bbox, map])
+  }, [bbox, flyRevision, map])
 
   return null
 }
@@ -99,15 +125,27 @@ function CorridorHighlight({
   )
 }
 
-function MapViewControls() {
+function MapViewControls({ onRegionSelect }: { onRegionSelect?: (portId: string) => void }) {
   const map = useMap()
   const { t } = useTranslation()
 
   return (
     <div className="map-controls">
-      <button type="button" onClick={() => map.setView([54.52, 18.53], 13)}>
-        {t('map.zoomGdynia')}
-      </button>
+      {MAP_REGION_ORDER.map((portId) => {
+        const region = MAP_REGION_VIEWS[portId]
+        return (
+          <button
+            key={portId}
+            type="button"
+            onClick={() => {
+              map.setView(region.center, region.zoom)
+              onRegionSelect?.(portId)
+            }}
+          >
+            {t(region.labelKey)}
+          </button>
+        )
+      })}
       <button type="button" onClick={() => map.setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM)}>
         {t('map.zoomRegion')}
       </button>
@@ -339,6 +377,9 @@ export function TrafficMap({
   terminals = [],
   focusBbox,
   focusPolygon,
+  layoutRevision = 0,
+  flyRevision = 0,
+  onRegionSelect,
 }: TrafficMapProps) {
   const [showFlowTiles, setShowFlowTiles] = useState(true)
   const [showIncidentHeat, setShowIncidentHeat] = useState(true)
@@ -378,8 +419,9 @@ export function TrafficMap({
         <ContextVehicleMarkers vehicles={vehicles} />
         <IncidentLayer incidents={primary.events} />
         <CorridorHighlight bbox={focusBbox} polygon={focusPolygon} />
-        <FlyToBbox bbox={focusBbox} />
-        <MapViewControls />
+        <FlyToBbox bbox={focusBbox} flyRevision={flyRevision} />
+        <MapLayoutRefresh revision={layoutRevision} />
+        <MapViewControls onRegionSelect={onRegionSelect} />
       </MapContainer>
       <HeatmapControls
         showFlowTiles={showFlowTiles}

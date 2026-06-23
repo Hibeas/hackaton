@@ -18,6 +18,19 @@ export const VERDICT_COLORS: Record<Verdict, string> = {
 export const MAP_DEFAULT_CENTER: [number, number] = [54.52, 18.53]
 export const MAP_DEFAULT_ZOOM = 11
 
+/** Quick map navigation targets per port region. */
+export const MAP_REGION_VIEWS: Record<
+  string,
+  { center: [number, number]; zoom: number; labelKey: string }
+> = {
+  gdynia: { center: [54.52, 18.53], zoom: 13, labelKey: 'map.zoomGdynia' },
+  gdansk: { center: [54.36, 18.66], zoom: 12, labelKey: 'map.zoomGdansk' },
+  szczecin: { center: [53.43, 14.55], zoom: 12, labelKey: 'map.zoomSzczecin' },
+  swinoujscie: { center: [53.91, 14.27], zoom: 13, labelKey: 'map.zoomSwinoujscie' },
+}
+
+export const MAP_REGION_ORDER = ['gdynia', 'gdansk', 'szczecin', 'swinoujscie'] as const
+
 export const MAP_BOUNDS = {
   minLat: 53,
   maxLat: 55.5,

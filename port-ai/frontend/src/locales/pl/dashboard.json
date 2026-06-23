@@ -1,4 +1,8 @@
 {
+  "sidebar": {
+    "expand": "Rozwiń panel silnika",
+    "collapse": "Zwiń panel silnika"
+  },
   "status": {
     "loading": "Ładowanie danych…",
     "error": "Nie udało się pobrać danych. Ponawiam…",
@@ -16,6 +20,7 @@
     "observations": "Obserwacje w bazie",
     "activeEvents": "Aktywne zdarzenia",
     "ports": "Porty",
+    "flyToPort": "Pokaż na mapie",
     "corridors": "Korytarze dojazdowe",
     "events": "Wykryte anomalie",
     "selectedEvent": "Szczegóły zdarzenia",
@@ -42,6 +47,17 @@
       "low_port_demand": "Niski popyt portu",
       "moderate_port_demand": "Umiarkowany popyt",
       "unknown": "Brak baseline"
+    },
+    "forecast": {
+      "title": "Prognoza opóźnienia",
+      "hint": "Badge: +15 min (trend), +30 min, +60 min (model ML)",
+      "updatedAt": "Prognoza",
+      "inMinutes": "+{{count}} min",
+      "method": {
+        "kafka_trend": "Trend z bufora Kafka (na żywo)",
+        "observation_trend": "Trend z historii obserwacji (fallback)",
+        "ml_historical": "Model historyczny (Random Forest)"
+      }
     }
   },
   "corridorEditor": {
@@ -113,6 +129,9 @@
     "contextVehiclePopup": "<strong>{{road}}</strong> <em>(ZTM)</em><br/>Status: {{status}}<br/>Prędkość: {{speed}} km/h",
     "intensityUnknown": "brak",
     "zoomGdynia": "Gdynia",
+    "zoomGdansk": "Gdańsk",
+    "zoomSzczecin": "Szczecin",
+    "zoomSwinoujscie": "Świnoujście",
     "zoomRegion": "Cały region",
     "heatmapFlowTiles": "TomTom Flow (live)",
     "heatmapIncidents": "Heatmapa incydentów ({{count}})",

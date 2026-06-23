@@ -1,18 +1,28 @@
 import { useTranslation } from 'react-i18next'
-import type { CorridorSnapshot, EngineEvent } from '../types/engine'
+import type { CorridorSnapshot, DelayForecastItem, EngineEvent } from '../types/engine'
 import { formatPercent } from '../utils/trafficFormat'
 
 interface CorridorCardProps {
   snapshot: CorridorSnapshot
   event?: EngineEvent
+  forecasts?: DelayForecastItem[]
   isSelected: boolean
   onSelect: () => void
 }
 
-export function CorridorCard({ snapshot, event, isSelected, onSelect }: CorridorCardProps) {
+const FORECAST_BADGES = [15, 30, 60] as const
+
+function methodLabelKey(method: DelayForecastItem['method']): string {
+  return `engine.forecast.method.${method}`
+}
+
+export function CorridorCard({ snapshot, event, forecasts, isSelected, onSelect }: CorridorCardProps) {
   const { t } = useTranslation()
   const metrics = snapshot.metrics
   const severity = event?.severity ?? 0
+  const forecastByHorizon = new Map(
+    (forecasts ?? []).map((item) => [item.horizon_minutes, item]),
+  )
 
   return (
     <button
@@ -58,6 +68,31 @@ export function CorridorCard({ snapshot, event, isSelected, onSelect }: Corridor
           <span>ZTM {formatPercent(metrics.congestion_ratio)}</span>
         ) : null}
       </div>
+
+      {forecasts && forecasts.length > 0 ? (
+        <div className="corridor-card__forecasts" aria-label={t('engine.forecast.title')}>
+          {FORECAST_BADGES.map((horizon) => {
+            const item = forecastByHorizon.get(horizon)
+            if (!item) {
+              return null
+            }
+            return (
+              <span
+                key={horizon}
+                className={`corridor-card__forecast corridor-card__forecast--${item.method}`}
+                title={t(methodLabelKey(item.method))}
+              >
+                <span className="corridor-card__forecast-horizon">
+                  {t('engine.forecast.inMinutes', { count: horizon })}
+                </span>
+                <span className="corridor-card__forecast-delay">
+                  {item.predicted_delay_sec}s
+                </span>
+              </span>
+            )
+          })}
+        </div>
+      ) : null}
 
       {event ? (
         <p className="corridor-card__event-type">{event.eventType}</p>

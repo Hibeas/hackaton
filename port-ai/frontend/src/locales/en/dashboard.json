@@ -1,4 +1,8 @@
 {
+  "sidebar": {
+    "expand": "Expand engine panel",
+    "collapse": "Collapse engine panel"
+  },
   "status": {
     "loading": "Loading data…",
     "error": "Failed to load data. Retrying…",
@@ -16,6 +20,7 @@
     "observations": "Observations stored",
     "activeEvents": "Active events",
     "ports": "Ports",
+    "flyToPort": "Show on map",
     "corridors": "Access corridors",
     "events": "Detected anomalies",
     "selectedEvent": "Event details",
@@ -42,6 +47,17 @@
       "low_port_demand": "Low port demand",
       "moderate_port_demand": "Moderate demand",
       "unknown": "No baseline"
+    },
+    "forecast": {
+      "title": "Delay forecast",
+      "hint": "Badges: +15 min (trend), +30 min, +60 min (ML model)",
+      "updatedAt": "Forecast",
+      "inMinutes": "+{{count}} min",
+      "method": {
+        "kafka_trend": "Kafka buffer trend (live)",
+        "observation_trend": "Observation history trend (fallback)",
+        "ml_historical": "Historical model (Random Forest)"
+      }
     }
   },
   "corridorEditor": {
@@ -113,6 +129,9 @@
     "contextVehiclePopup": "<strong>{{road}}</strong> <em>(ZTM)</em><br/>Status: {{status}}<br/>Speed: {{speed}} km/h",
     "intensityUnknown": "n/a",
     "zoomGdynia": "Gdynia",
+    "zoomGdansk": "Gdańsk",
+    "zoomSzczecin": "Szczecin",
+    "zoomSwinoujscie": "Świnoujście",
     "zoomRegion": "Full region",
     "heatmapFlowTiles": "TomTom Flow (live)",
     "heatmapIncidents": "Incident heatmap ({{count}})",

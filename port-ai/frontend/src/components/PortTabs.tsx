@@ -5,10 +5,11 @@ interface PortTabsProps {
   ports: PortConfig[]
   selectedPortId: string
   onSelect: (portId: string) => void
+  onFlyTo?: (portId: string) => void
   eventCounts: Record<string, number>
 }
 
-export function PortTabs({ ports, selectedPortId, onSelect, eventCounts }: PortTabsProps) {
+export function PortTabs({ ports, selectedPortId, onSelect, onFlyTo, eventCounts }: PortTabsProps) {
   const { t } = useTranslation()
 
   return (
@@ -17,17 +18,29 @@ export function PortTabs({ ports, selectedPortId, onSelect, eventCounts }: PortT
         const count = eventCounts[port.id] ?? 0
         const isActive = port.id === selectedPortId
         return (
-          <button
-            key={port.id}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            className={`port-tab${isActive ? ' port-tab--active' : ''}`}
-            onClick={() => onSelect(port.id)}
-          >
-            <span>{port.name}</span>
-            {count > 0 ? <span className="port-tab__badge">{count}</span> : null}
-          </button>
+          <div key={port.id} className={`port-tab-wrap${isActive ? ' port-tab-wrap--active' : ''}`}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              className={`port-tab${isActive ? ' port-tab--active' : ''}`}
+              onClick={() => onSelect(port.id)}
+            >
+              <span>{port.name}</span>
+              {count > 0 ? <span className="port-tab__badge">{count}</span> : null}
+            </button>
+            {onFlyTo ? (
+              <button
+                type="button"
+                className="port-tab__fly"
+                onClick={() => onFlyTo(port.id)}
+                title={t('engine.flyToPort')}
+                aria-label={t('engine.flyToPort')}
+              >
+                ⌖
+              </button>
+            ) : null}
+          </div>
         )
       })}
     </div>

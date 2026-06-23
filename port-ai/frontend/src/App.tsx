@@ -50,6 +50,9 @@ function DashboardView() {
 
   const [selectedPortId, setSelectedPortId] = useState('gdynia')
   const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mapLayoutRevision, setMapLayoutRevision] = useState(0)
+  const [mapFlyRevision, setMapFlyRevision] = useState(0)
 
   const focusGeometry = useMemo(
     () => resolveFocusGeometry(ports, selectedPortId, selectedCorridorId),
@@ -59,6 +62,17 @@ function DashboardView() {
   const handlePortSelect = (portId: string) => {
     setSelectedPortId(portId)
     setSelectedCorridorId(null)
+  }
+
+  const handlePortFlyTo = (portId: string) => {
+    setSelectedPortId(portId)
+    setSelectedCorridorId(null)
+    setMapFlyRevision((value) => value + 1)
+  }
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((value) => !value)
+    setMapLayoutRevision((value) => value + 1)
   }
 
   return (
@@ -75,27 +89,52 @@ function DashboardView() {
                 terminals={mapData.port_operations?.terminals_catalog ?? []}
                 focusBbox={focusGeometry.bbox}
                 focusPolygon={focusGeometry.polygon}
+                layoutRevision={mapLayoutRevision}
+                flyRevision={mapFlyRevision}
+                onRegionSelect={handlePortSelect}
               />
             </MapErrorBoundary>
           ) : (
             <div className="map-placeholder" />
           )}
-          <LanguageSwitcher />
-          <a className="editor-nav-link" href="#/corridor-editor">
-            {t('corridorEditor.navLink')}
-          </a>
+          <div className="map-top-bar">
+            <a className="editor-nav-link" href="#/corridor-editor">
+              {t('corridorEditor.navLink')}
+            </a>
+            <LanguageSwitcher />
+          </div>
         </div>
-        <EngineDashboard
-          ports={ports}
-          engineEvents={engineEvents}
-          corridors={corridors}
-          bottlenecks={bottlenecks}
-          portOperations={mapData?.port_operations}
-          selectedPortId={selectedPortId}
-          selectedCorridorId={selectedCorridorId}
-          onPortSelect={handlePortSelect}
-          onCorridorSelect={setSelectedCorridorId}
-        />
+        <div
+          className={`sidebar-shell${sidebarCollapsed ? ' sidebar-shell--collapsed' : ''}`}
+        >
+          <button
+            type="button"
+            className="sidebar-shell__toggle"
+            onClick={toggleSidebar}
+            aria-expanded={!sidebarCollapsed}
+            aria-label={sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+            title={sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+          >
+            <span className="sidebar-shell__toggle-icon" aria-hidden>
+              {sidebarCollapsed ? '‹' : '›'}
+            </span>
+          </button>
+          {!sidebarCollapsed ? (
+            <EngineDashboard
+              ports={ports}
+              engineEvents={engineEvents}
+              corridors={corridors}
+              bottlenecks={bottlenecks}
+              delayForecasts={mapData?.delay_forecasts}
+              portOperations={mapData?.port_operations}
+              selectedPortId={selectedPortId}
+              selectedCorridorId={selectedCorridorId}
+              onPortSelect={handlePortSelect}
+              onCorridorSelect={setSelectedCorridorId}
+              onPortFlyTo={handlePortFlyTo}
+            />
+          ) : null}
+        </div>
       </main>
       <StatusBar
         primaryCount={mapData?.primary.incident_count ?? 0}

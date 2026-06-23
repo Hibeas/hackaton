@@ -5,6 +5,7 @@ import type {
 import type {
   BottlenecksResponse,
   CorridorsResponse,
+  DelayForecastResponse,
   EngineEventsResponse,
 } from '../types/engine'
 import type { CorridorConfigResponse } from '../types/corridorConfig'
@@ -36,6 +37,21 @@ export async function fetchBottlenecks(): Promise<BottlenecksResponse> {
 
 export async function fetchCorridors(): Promise<CorridorsResponse> {
   return fetchJson<CorridorsResponse>('/api/v1/engine/corridors')
+}
+
+export async function fetchDelayForecasts(
+  horizons = '10,15,20,30,45,60',
+  portId?: string,
+  corridorId?: string,
+): Promise<DelayForecastResponse> {
+  const params = new URLSearchParams({ horizons })
+  if (portId) {
+    params.set('port_id', portId)
+  }
+  if (corridorId) {
+    params.set('corridor_id', corridorId)
+  }
+  return fetchJson<DelayForecastResponse>(`/api/v1/engine/forecast?${params.toString()}`)
 }
 
 export async function fetchCorridorConfig(): Promise<CorridorConfigResponse> {

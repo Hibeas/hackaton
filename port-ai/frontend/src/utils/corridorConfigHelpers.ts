@@ -3,8 +3,8 @@ import { bboxFromPoints } from './corridorGeometry'
 
 export const PORT_DISPLAY_ORDER = ['gdynia', 'gdansk', 'szczecin', 'swinoujscie'] as const
 
-/** Ports shown in dashboard / editor (MVP: Trójmiasto only). */
-export const UI_VISIBLE_PORT_IDS = new Set<string>(['gdynia', 'gdansk'])
+/** Ports shown in dashboard / editor. */
+export const UI_VISIBLE_PORT_IDS = new Set<string>(['gdynia', 'gdansk', 'szczecin', 'swinoujscie'])
 
 export function sortPorts(ports: PortConfig[]): PortConfig[] {
   return [...ports].sort(
