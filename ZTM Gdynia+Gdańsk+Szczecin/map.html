@@ -17,10 +17,36 @@
         }
         .legend {
             background: white;
-            padding: 15px;
+            padding: 10px 12px;
             border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
-            line-height: 1.5;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+            line-height: 1.4;
+            font-size: 12px;
+            max-width: 200px;
+        }
+        .legend.collapsed .legend-body {
+            display: none;
+        }
+        .panel-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            width: 100%;
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            font: inherit;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+            color: #333;
+            text-align: left;
+        }
+        .panel-toggle .chevron {
+            font-size: 11px;
+            color: #666;
         }
         .legend i {
             width: 12px;
@@ -61,30 +87,57 @@
             padding: 8px 12px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
-            font-size: 13px;
+            font-size: 11px;
             z-index: 1000;
-            max-width: calc(100vw - 24px);
+            max-width: min(560px, calc(100vw - 300px));
+            line-height: 1.35;
         }
         #view-controls {
             position: fixed;
             bottom: 12px;
             right: 12px;
             display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
             gap: 6px;
             z-index: 1000;
+            max-width: min(100vw - 24px, 420px);
         }
+        #city-nav {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 5px;
+            z-index: 1000;
+            max-width: calc(100vw - 20px);
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.88);
+            border-radius: 10px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+        }
+        #city-nav button,
         #view-controls button {
             border: none;
-            background: rgba(255, 255, 255, 0.92);
+            background: rgba(255, 255, 255, 0.95);
             color: #333;
-            padding: 8px 12px;
+            padding: 7px 11px;
             border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
             cursor: pointer;
             font-size: 12px;
+            white-space: nowrap;
         }
+        #city-nav button:hover,
         #view-controls button:hover {
-            background: #f5f5f5;
+            background: #f0f4f8;
+        }
+        #city-nav button.active {
+            background: #1565c0;
+            color: #fff;
         }
         #update-toast {
             position: fixed;
@@ -136,6 +189,407 @@
             background: #e0e0e0;
             color: #333;
         }
+        #hourly-report-panel {
+            position: fixed;
+            top: auto;
+            bottom: 48px;
+            right: 12px;
+            width: min(280px, calc(100vw - 20px));
+            max-height: 38vh;
+            background: rgba(255, 255, 255, 0.97);
+            border: 1px solid #dde3ea;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+            color: #1e293b;
+            pointer-events: auto;
+        }
+        #hourly-report-panel.collapsed {
+            max-height: none;
+        }
+        #hourly-report-panel.collapsed #hourly-report-body {
+            display: none;
+        }
+        #hourly-report-panel .panel-header {
+            padding: 8px 10px;
+            border-bottom: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+        #hourly-report-panel.collapsed .panel-header {
+            border-bottom: none;
+        }
+        #hourly-report-panel .panel-toggle {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        #hourly-report-panel .incident-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            margin-left: 6px;
+            border-radius: 999px;
+            background: #dc2626;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        #hourly-report-panel .incident-count-badge.zero {
+            background: #94a3b8;
+        }
+        #hourly-report-panel .panel-subtitle {
+            margin: 3px 0 0;
+            font-size: 10px;
+            color: #64748b;
+            line-height: 1.3;
+        }
+        #hourly-report-panel #hourly-report-body {
+            overflow-y: auto;
+            padding: 8px 10px 10px;
+        }
+        #hourly-report-panel .report-headline {
+            background: #f8fafc;
+            border-radius: 6px;
+            padding: 6px 8px;
+            margin-bottom: 8px;
+            line-height: 1.35;
+            color: #475569;
+            font-size: 11px;
+        }
+        #hourly-report-panel .report-headline.empty {
+            color: #64748b;
+            text-align: center;
+        }
+        #hourly-report-panel .incident-card {
+            border-left: 3px solid #dc2626;
+            padding: 6px 8px;
+            margin-bottom: 6px;
+            background: #fafafa;
+            border-radius: 4px;
+            line-height: 1.35;
+        }
+        #hourly-report-panel .incident-card.congestion {
+            border-left-color: #d97706;
+        }
+        #hourly-report-panel .incident-card-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 6px;
+            margin-bottom: 3px;
+        }
+        #hourly-report-panel .incident-location {
+            font-size: 11px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        #hourly-report-panel .incident-city {
+            font-size: 10px;
+            color: #64748b;
+        }
+        #hourly-report-panel .severity-badge {
+            flex-shrink: 0;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        #hourly-report-panel .severity-badge.congestion {
+            background: #fef3c7;
+            color: #b45309;
+        }
+        #hourly-report-panel .incident-problem {
+            font-size: 10px;
+            color: #475569;
+            margin-bottom: 4px;
+        }
+        #hourly-report-panel .driver-action {
+            font-size: 10px;
+            color: #1e40af;
+            background: #eff6ff;
+            border-radius: 4px;
+            padding: 4px 6px;
+        }
+        #hourly-report-panel .driver-action strong {
+            font-size: 9px;
+            text-transform: uppercase;
+            color: #64748b;
+            display: block;
+            margin-bottom: 1px;
+        }
+        #hourly-report-panel .more-incidents {
+            font-size: 10px;
+            color: #64748b;
+            text-align: center;
+            padding: 2px 0;
+        }
+        #port-ops-panel {
+            position: fixed;
+            top: auto;
+            bottom: 110px;
+            right: 12px;
+            width: min(320px, calc(100vw - 20px));
+            max-height: 42vh;
+            background: rgba(255, 255, 255, 0.97);
+            border: 1px solid #dde3ea;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+            color: #1e293b;
+            pointer-events: auto;
+        }
+        #port-ops-panel.collapsed {
+            max-height: none;
+        }
+        #port-ops-panel.collapsed #port-ops-body {
+            display: none;
+        }
+        #port-ops-panel .panel-header {
+            padding: 8px 10px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        #port-ops-panel.collapsed .panel-header {
+            border-bottom: none;
+        }
+        #port-ops-panel #port-ops-body {
+            overflow-y: auto;
+            padding: 8px 10px 10px;
+        }
+        #port-ops-panel .ops-item {
+            border-left: 3px solid #1565c0;
+            padding: 6px 8px;
+            margin-bottom: 6px;
+            background: #fafafa;
+            border-radius: 4px;
+            line-height: 1.35;
+        }
+        #port-ops-panel .ops-item.warn {
+            border-left-color: #d97706;
+        }
+        #update-toast.tir-alert {
+            background: #b45309;
+        }
+        #update-toast.tir-alert.critical {
+            background: #b91c1c;
+        }
+        .codeco-chart-section {
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .codeco-chart-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #334155;
+            margin-bottom: 4px;
+        }
+        .codeco-chart-meta {
+            font-size: 10px;
+            color: #64748b;
+            margin-bottom: 6px;
+            line-height: 1.35;
+        }
+        .codeco-chart-wrap {
+            overflow-x: auto;
+            margin-bottom: 6px;
+        }
+        .codeco-chart-svg {
+            display: block;
+            min-width: 100%;
+        }
+        .codeco-chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+            font-size: 9px;
+            color: #475569;
+        }
+        .codeco-chart-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .codeco-chart-legend i {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            display: inline-block;
+        }
+        .tir-zone-pulse {
+            animation: tir-pulse 1.2s ease-in-out 4;
+        }
+        @keyframes tir-pulse {
+            0%, 100% { stroke-width: 2; stroke-opacity: 1; }
+            50% { stroke-width: 6; stroke-opacity: 0.65; }
+        }
+        #port-ops-panel .ops-item.tir-activated {
+            border-left-color: #b45309;
+            background: #fff7ed;
+        }
+        .city-accordion {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .city-accordion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            width: 100%;
+            border: none;
+            background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 8px 10px;
+            cursor: pointer;
+            text-align: left;
+            font: inherit;
+            color: #0f172a;
+        }
+        .city-accordion-header:hover {
+            background: #eef2f7;
+        }
+        .city-accordion-header .city-title {
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .city-accordion-header .city-meta {
+            font-size: 10px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+        .city-accordion-header .city-chevron {
+            font-size: 11px;
+            color: #64748b;
+            flex-shrink: 0;
+        }
+        .city-accordion.collapsed .city-accordion-body {
+            display: none;
+        }
+        .city-accordion-body {
+            padding: 8px 10px 10px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .city-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin: 0 0 6px;
+        }
+        .city-section-title:not(:first-child) {
+            margin-top: 10px;
+        }
+        .terminal-card {
+            border-left: 3px solid #1565c0;
+            padding: 7px 8px;
+            margin-bottom: 6px;
+            background: #fafafa;
+            border-radius: 4px;
+            line-height: 1.4;
+        }
+        .terminal-card.warn {
+            border-left-color: #d97706;
+            background: #fffbeb;
+        }
+        .terminal-card.idle {
+            opacity: 0.8;
+        }
+        .terminal-card.tir-activated {
+            border-left-color: #b45309;
+            background: #fff7ed;
+        }
+        .terminal-card .terminal-name {
+            font-weight: 700;
+            font-size: 11px;
+        }
+        .terminal-card .terminal-desc {
+            font-size: 10px;
+            color: #475569;
+            margin-top: 3px;
+        }
+        .terminal-card .terminal-stats {
+            font-size: 10px;
+            color: #334155;
+            margin-top: 4px;
+        }
+        .road-status-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .road-status-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 5px 7px;
+            border-radius: 5px;
+            background: #f8fafc;
+            font-size: 10px;
+        }
+        .road-status-item .road-name {
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .road-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-size: 9px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .road-status-badge.clear {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .road-status-badge.congestion {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .road-status-badge.critical {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .road-status-badge.unknown {
+            background: #e2e8f0;
+            color: #475569;
+        }
+        .road-status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .road-status-dot.clear { background: #22c55e; }
+        .road-status-dot.congestion { background: #f59e0b; }
+        .road-status-dot.critical { background: #ef4444; }
+        .road-status-dot.unknown { background: #94a3b8; }
+        .leaflet-popup-content {
+            margin: 10px 12px;
+            line-height: 1.4;
+            font-size: 12px;
+        }
+        .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body>
@@ -146,10 +600,50 @@
         <button type="button" class="secondary" id="notify-dismiss">Nie teraz</button>
     </div>
     <div id="update-toast" role="status" aria-live="polite"></div>
+    <aside id="port-ops-panel" class="collapsed" aria-label="Operacje portowe">
+        <div class="panel-header">
+            <button type="button" class="panel-toggle" id="port-ops-toggle" aria-expanded="false">
+                <span>Operacje portowe<span class="incident-count-badge zero" id="port-ops-count">0</span></span>
+                <span class="chevron" id="port-ops-chevron">▸</span>
+            </button>
+            <p class="panel-subtitle" id="port-ops-meta">Ładowanie…</p>
+        </div>
+        <div id="port-ops-body">
+            <div class="codeco-chart-section">
+                <div class="codeco-chart-title">Ruch Codeco / 24 h (per terminal)</div>
+                <div class="codeco-chart-meta" id="codeco-chart-meta">Ładowanie wykresu…</div>
+                <div class="codeco-chart-wrap">
+                    <svg id="codeco-chart" class="codeco-chart-svg" role="img" aria-label="Wykres ruchu Codeco"></svg>
+                </div>
+                <div class="codeco-chart-legend" id="codeco-chart-legend"></div>
+            </div>
+            <div id="port-ops-list"></div>
+        </div>
+    </aside>
+    <aside id="hourly-report-panel" class="collapsed" aria-label="Raport incydentów z ostatniej godziny">
+        <div class="panel-header">
+            <button type="button" class="panel-toggle" id="hourly-report-toggle" aria-expanded="false">
+                <span>Raport 1 h<span class="incident-count-badge zero" id="hourly-incident-count">0</span></span>
+                <span class="chevron" id="hourly-report-chevron">▸</span>
+            </button>
+            <p class="panel-subtitle" id="hourly-report-meta">Ładowanie…</p>
+        </div>
+        <div id="hourly-report-body">
+            <div class="report-headline" id="hourly-report-headline">Analiza w toku…</div>
+            <div id="hourly-incident-list"></div>
+        </div>
+    </aside>
     <div id="status-bar">Oczekiwanie na pierwsze pobranie…</div>
+    <nav id="city-nav" aria-label="Nawigacja po miastach">
+        <button type="button" data-city="gdynia" class="active">Gdynia</button>
+        <button type="button" data-city="gdansk">Gdańsk</button>
+        <button type="button" data-city="szczecin">Szczecin</button>
+        <button type="button" data-city="swinoujscie">Świnoujście</button>
+        <button type="button" data-city="trojmiasto">Trójmiasto</button>
+        <button type="button" data-city="all">Cały rejon</button>
+    </nav>
     <div id="view-controls">
-        <button type="button" id="zoom-gdynia">Gdynia (odcinki)</button>
-        <button type="button" id="zoom-region">Cały region</button>
+        <button type="button" id="zoom-gdynia-segments" title="Przybliż odcinki pętli w Gdyni">Odcinki Gdynia</button>
     </div>
     <div id="map"></div>
 
@@ -167,14 +661,25 @@
 
         const segmentsLayer = L.layerGroup().addTo(map);
         const vehiclesLayer = L.layerGroup().addTo(map);
+        const incidentsLayer = L.layerGroup().addTo(map);
+        const portCallsLayer = L.layerGroup().addTo(map);
+        const containerActivityLayer = L.layerGroup().addTo(map);
+        const codecoMovesLayer = L.layerGroup().addTo(map);
+        const approachZonesLayer = L.layerGroup().addTo(map);
         let segmentsGeoJsonLayer = null;
+        let incidentsGeoJsonLayer = null;
         L.control.layers(
             null,
             {
                 "Odcinki dróg (Gdynia)": segmentsLayer,
                 "Autobusy (Gdańsk, Szczecin)": vehiclesLayer,
+                "Incydenty TomTom (fuzja ZTM)": incidentsLayer,
+                "Zawinięcia (PCS)": portCallsLayer,
+                "Codeco — terminale": containerActivityLayer,
+                "Codeco — ostatnie ruchy": codecoMovesLayer,
+                "Korytarze dojazdu TIR": approachZonesLayer,
             },
-            { collapsed: false, position: "topleft" },
+            { collapsed: true, position: "topleft" },
         ).addTo(map);
         const loadingEl = document.getElementById("loading");
         const statusBarEl = document.getElementById("status-bar");
@@ -188,6 +693,56 @@
         let isFetching = false;
         let hasLoadedOnce = false;
         let notificationsEnabled = false;
+        let lastEvents = [];
+        let previousZoneActivity = null;
+        let tirAlertsInitialized = false;
+        let recentlyActivatedZoneIds = new Set();
+        const CODECO_TERMINAL_COLORS = {
+            DCT: "#1565c0",
+            GCT: "#2e7d32",
+            BCT: "#e65100",
+            DBPS: "#7b1fa2",
+            PLSZZ: "#00838f",
+        };
+
+        const CITY_PRESETS = {
+            gdynia: {
+                cities: ["Gdynia"],
+                center: [54.52, 18.53],
+                zoom: 13,
+                maxZoom: 15,
+            },
+            gdansk: {
+                cities: ["Gdansk"],
+                center: [54.35, 18.65],
+                zoom: 12,
+                maxZoom: 14,
+            },
+            szczecin: {
+                cities: ["Szczecin"],
+                center: [53.43, 14.55],
+                zoom: 12,
+                maxZoom: 14,
+            },
+            swinoujscie: {
+                cities: ["Swinoujscie"],
+                center: [53.91, 14.25],
+                zoom: 13,
+                maxZoom: 14,
+            },
+            trojmiasto: {
+                cities: ["Gdynia", "Gdansk", "Trojmiasto"],
+                center: [54.42, 18.55],
+                zoom: 10,
+                maxZoom: 12,
+            },
+            all: {
+                cities: null,
+                bounds: [[53.25, 13.85], [54.62, 18.82]],
+                zoom: 8,
+                maxZoom: 10,
+            },
+        };
 
         const TOAST_VISIBLE_MS = 5000;
         const NOTIFY_BANNER_KEY = "port-map-notify-prompt";
@@ -222,18 +777,168 @@
             }, 1000);
         }
 
-        function showUpdateToast(message) {
+        function showUpdateToast(message, { variant = "default", durationMs = TOAST_VISIBLE_MS } = {}) {
             updateToastEl.textContent = message;
+            updateToastEl.classList.remove("tir-alert", "critical");
+            if (variant === "tir") {
+                updateToastEl.classList.add("tir-alert");
+            }
+            if (variant === "tir-critical") {
+                updateToastEl.classList.add("tir-alert", "critical");
+            }
             updateToastEl.classList.add("visible");
             if (toastTimer) {
                 clearTimeout(toastTimer);
             }
             toastTimer = setTimeout(() => {
-                updateToastEl.classList.remove("visible");
-            }, TOAST_VISIBLE_MS);
+                updateToastEl.classList.remove("visible", "tir-alert", "critical");
+            }, durationMs);
         }
 
-        function showSystemNotification(title, body) {
+        function showTirZoneNotification(zone) {
+            const roads = (zone.roads_pl || []).slice(0, 2).join(", ");
+            const title = `Strefa TIR aktywna — ${zone.terminal || "?"}`;
+            const body = `${zone.label || zone.zone_id}: ${zone.moves_in_last_hour || 0} ruchów/h · ${roads}`;
+            showUpdateToast(`🚛 ${title} · ${zone.moves_in_last_hour || 0}/h`, {
+                variant: zone.truck_demand_hint === "high" ? "tir-critical" : "tir",
+                durationMs: 8000,
+            });
+            showSystemNotification(title, body, `port-tir-zone-${zone.zone_id || "alert"}`);
+        }
+
+        function pulseApproachZone(zoneId) {
+            approachZonesLayer.eachLayer((layer) => {
+                layer.eachLayer?.((child) => {
+                    const props = child.feature?.properties;
+                    if (props?.zone_id === zoneId && child._path) {
+                        child._path.classList.add("tir-zone-pulse");
+                        setTimeout(() => child._path.classList.remove("tir-zone-pulse"), 5200);
+                    }
+                });
+            });
+        }
+
+        function checkTirZoneAlerts(zones) {
+            const current = {};
+            for (const zone of zones || []) {
+                if (!zone.zone_id) continue;
+                current[zone.zone_id] = Boolean(zone.active_last_hour);
+            }
+
+            if (!tirAlertsInitialized) {
+                previousZoneActivity = current;
+                tirAlertsInitialized = true;
+                return [];
+            }
+
+            const activated = [];
+            for (const zone of zones || []) {
+                const zoneId = zone.zone_id;
+                if (!zoneId) continue;
+                const wasActive = previousZoneActivity[zoneId];
+                const isActive = Boolean(zone.active_last_hour);
+                if (!wasActive && isActive) {
+                    activated.push(zone);
+                }
+            }
+
+            previousZoneActivity = current;
+            return activated;
+        }
+
+        function handleTirZoneActivations(activatedZones) {
+            if (!activatedZones.length) return;
+
+            const panel = document.getElementById("port-ops-panel");
+            if (panel.classList.contains("collapsed")) {
+                panel.classList.remove("collapsed");
+                document.getElementById("port-ops-chevron").textContent = "▾";
+                document.getElementById("port-ops-toggle").setAttribute("aria-expanded", "true");
+            }
+
+            activatedZones.forEach((zone, index) => {
+                setTimeout(() => {
+                    showTirZoneNotification(zone);
+                    pulseApproachZone(zone.zone_id);
+                }, index * 400);
+            });
+        }
+
+        function renderCodecoHourlyChart(hourlyData) {
+            const svg = document.getElementById("codeco-chart");
+            const metaEl = document.getElementById("codeco-chart-meta");
+            const legendEl = document.getElementById("codeco-chart-legend");
+            if (!svg || !hourlyData?.buckets?.length) {
+                if (metaEl) metaEl.textContent = "Brak danych Codeco do wykresu 24 h.";
+                if (svg) svg.innerHTML = "";
+                if (legendEl) legendEl.innerHTML = "";
+                return;
+            }
+
+            const terminals = hourlyData.terminals || Object.keys(CODECO_TERMINAL_COLORS);
+            const buckets = hourlyData.buckets;
+            const refTime = hourlyData.reference_time
+                ? formatTimestamp(hourlyData.reference_time)
+                : "—";
+            const anchoredNote = hourlyData.data_anchored
+                ? " · okno względem ostatniego eksportu Codeco"
+                : "";
+            const peak = hourlyData.peak_hour;
+            const peakLabel = peak
+                ? `Szczyt: ${peak.label} (${peak.total} ruchów)`
+                : "";
+
+            metaEl.textContent = `Koniec okna: ${refTime}${anchoredNote}${peakLabel ? ` · ${peakLabel}` : ""}`;
+
+            const rowHeight = 18;
+            const barGap = 1;
+            const labelWidth = 34;
+            const chartHeight = terminals.length * rowHeight + 22;
+            const barAreaWidth = Math.max(220, buckets.length * 7);
+            const width = labelWidth + barAreaWidth + 8;
+            const maxVal = Math.max(
+                1,
+                ...terminals.flatMap((terminal) =>
+                    buckets.map((bucket) => bucket.totals?.[terminal] || 0),
+                ),
+            );
+
+            let svgContent = "";
+            terminals.forEach((terminal, rowIndex) => {
+                const y = 8 + rowIndex * rowHeight;
+                const color = CODECO_TERMINAL_COLORS[terminal] || "#64748b";
+                svgContent += `<text x="0" y="${y + 11}" font-size="9" font-weight="700" fill="#334155">${terminal}</text>`;
+                buckets.forEach((bucket, bucketIndex) => {
+                    const value = bucket.totals?.[terminal] || 0;
+                    const barWidth = Math.max(1, (value / maxVal) * (barAreaWidth / buckets.length - barGap));
+                    const x = labelWidth + bucketIndex * (barAreaWidth / buckets.length);
+                    const barHeight = Math.max(value > 0 ? 3 : 1, (value / maxVal) * (rowHeight - 6));
+                    const barY = y + (rowHeight - barHeight) - 2;
+                    const title = `${terminal} · ${bucket.label}: ${value} ruchów`;
+                    svgContent += `<rect x="${x.toFixed(1)}" y="${barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" fill="${color}" rx="1"><title>${title}</title></rect>`;
+                });
+            });
+
+            const tickEvery = buckets.length > 12 ? 4 : 2;
+            for (let i = 0; i < buckets.length; i += tickEvery) {
+                const x = labelWidth + i * (barAreaWidth / buckets.length);
+                svgContent += `<text x="${x}" y="${chartHeight - 2}" font-size="8" fill="#94a3b8">${buckets[i].label}</text>`;
+            }
+
+            svg.setAttribute("viewBox", `0 0 ${width} ${chartHeight}`);
+            svg.setAttribute("height", String(chartHeight));
+            svg.innerHTML = svgContent;
+
+            legendEl.innerHTML = terminals
+                .map((terminal) => {
+                    const color = CODECO_TERMINAL_COLORS[terminal] || "#64748b";
+                    const total = buckets.reduce((sum, bucket) => sum + (bucket.totals?.[terminal] || 0), 0);
+                    return `<span><i style="background:${color}"></i>${terminal}: ${total}</span>`;
+                })
+                .join("");
+        }
+
+        function showSystemNotification(title, body, tag = "port-map-update") {
             if (!notificationsEnabled || !("Notification" in window)) {
                 return;
             }
@@ -243,7 +948,7 @@
             try {
                 new Notification(title, {
                     body,
-                    tag: "port-map-update",
+                    tag,
                     renotify: true,
                 });
             } catch (error) {
@@ -296,6 +1001,17 @@
             notificationsEnabled = true;
         }
 
+        const POPUP_OPTS = { maxWidth: 280, minWidth: 180, maxHeight: 260 };
+
+        function bindPopup(layer, html) {
+            layer.bindPopup(html, POPUP_OPTS);
+        }
+
+        function truncateText(text, maxLen = 120) {
+            if (!text || text.length <= maxLen) return text || "";
+            return `${text.slice(0, maxLen).trim()}…`;
+        }
+
         const statusColors = {
             CRITICAL: "#ff4444",
             CONGESTION: "#ffbb33",
@@ -318,8 +1034,10 @@
         }
 
         function getRecordKind(event) {
-            return event.record_kind
-                || (event.source_type === "induction_loop" ? "road_segment" : "vehicle");
+            if (event.record_kind) return event.record_kind;
+            if (event.source_type === "tomtom_traffic") return "traffic_incident";
+            if (event.source_type === "port_pcs") return event.record_kind || "port_call";
+            return event.source_type === "induction_loop" ? "road_segment" : "vehicle";
         }
 
         function segmentLineWeight() {
@@ -382,7 +1100,69 @@
             }
         }
 
+        function eventMatchesCity(event, cityKey) {
+            const preset = CITY_PRESETS[cityKey];
+            if (!preset) return false;
+            if (!preset.cities) return true;
+            return preset.cities.includes(event.city);
+        }
+
+        function collectCityBounds(cityKey) {
+            const latLngs = [];
+            for (const event of lastEvents) {
+                if (!eventMatchesCity(event, cityKey)) continue;
+                const lat = event.location?.lat;
+                const lon = event.location?.lon;
+                if (isValidLocation(lat, lon)) {
+                    latLngs.push([lat, lon]);
+                }
+                const geometry = normalizeGeometry(event.geometry);
+                if (geometry) {
+                    geometry.coordinates.forEach((point) => {
+                        latLngs.push([point[1], point[0]]);
+                    });
+                }
+            }
+            return latLngs;
+        }
+
+        function setActiveCityButton(cityKey) {
+            document.querySelectorAll("#city-nav button").forEach((btn) => {
+                btn.classList.toggle("active", btn.dataset.city === cityKey);
+            });
+        }
+
+        function zoomToCity(cityKey) {
+            const preset = CITY_PRESETS[cityKey];
+            if (!preset) return;
+
+            setActiveCityButton(cityKey);
+            const latLngs = collectCityBounds(cityKey);
+
+            if (latLngs.length > 0) {
+                const bounds = L.latLngBounds(latLngs);
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds.pad(0.12), {
+                        padding: [40, 40],
+                        maxZoom: preset.maxZoom || 14,
+                    });
+                    return;
+                }
+            }
+
+            if (preset.bounds) {
+                map.fitBounds(preset.bounds, {
+                    padding: [30, 30],
+                    maxZoom: preset.maxZoom || 10,
+                });
+                return;
+            }
+
+            map.setView(preset.center, preset.zoom);
+        }
+
         function zoomToGdyniaSegments() {
+            setActiveCityButton("gdynia");
             if (segmentsGeoJsonLayer && segmentsGeoJsonLayer.getLayers().length > 0) {
                 fitMapToLayer(segmentsGeoJsonLayer, 15);
                 return;
@@ -391,21 +1171,25 @@
         }
 
         function zoomToRegion() {
-            const group = L.featureGroup([segmentsLayer, vehiclesLayer]);
-            if (group.getLayers().length > 0) {
-                fitMapToLayer(group, 10);
-                return;
-            }
-            map.setView([54.4, 18.5], 9);
+            zoomToCity("all");
         }
 
         map.on("zoomend", refreshSegmentStyles);
 
-        document.getElementById("zoom-gdynia").addEventListener("click", zoomToGdyniaSegments);
-        document.getElementById("zoom-region").addEventListener("click", zoomToRegion);
+        document.querySelectorAll("#city-nav button").forEach((button) => {
+            button.addEventListener("click", () => zoomToCity(button.dataset.city));
+        });
+        document.getElementById("zoom-gdynia-segments").addEventListener("click", zoomToGdyniaSegments);
 
         function buildSegmentPopup(event) {
             const intensity = formatIntensity(event.metrics.intensity_vph);
+            const corr = event.context?.corroboration;
+            let extra = "";
+            if (corr?.tomtom_cause) {
+                extra = `<br><strong>TomTom w pobliżu:</strong> ${corr.tomtom_cause} @ ${corr.tomtom_road || "?"}`;
+            } else if (corr?.flag === "tomtom_gap") {
+                extra = `<br><em style="color:#c62828">${corr.note}</em>`;
+            }
             return `
                 <strong>Typ:</strong> Odcinek drogi<br>
                 <strong>Miasto:</strong> ${event.city}<br>
@@ -413,7 +1197,7 @@
                 <strong>Źródło:</strong> ${event.source_type}<br>
                 <strong>Natężenie:</strong> ${intensity}<br>
                 <strong>Prędkość (szac.):</strong> ${event.metrics.speed_kmh} km/h<br>
-                <strong>Status:</strong> ${event.status}<br>
+                <strong>Status:</strong> ${event.status}${extra}
                 <hr style="margin: 5px 0;">
                 <small>Aktualizacja: ${formatTimestamp(event.timestamp)}</small>
             `;
@@ -424,6 +1208,13 @@
             const busStop = metrics.is_bus_stop ? "tak" : "nie";
             const line = metrics.line || "?";
             const direction = metrics.direction || metrics.headsign || "brak danych";
+            const corroboration = event.context?.corroboration;
+            let extra = "";
+            if (corroboration?.near_tomtom_incident) {
+                extra = `<br><strong>TomTom:</strong> ${corroboration.tomtom_cause || "?"} @ ${corroboration.tomtom_road || "?"}`;
+            } else if (corroboration?.flag === "transit_slow_no_tomtom") {
+                extra = `<br><em>${corroboration.note}</em>`;
+            }
             return `
                 <strong>Typ:</strong> Autobus<br>
                 <strong>Miasto:</strong> ${event.city}<br>
@@ -432,18 +1223,545 @@
                 <strong>Kierunek:</strong> ${direction}<br>
                 <strong>Prędkość:</strong> ${metrics.speed_kmh} km/h<br>
                 <strong>Status:</strong> ${event.status}<br>
-                <strong>Postój / przystanek:</strong> ${busStop}<br>
+                <strong>Postój / przystanek:</strong> ${busStop}${extra}
                 <hr style="margin: 5px 0;">
                 <small>Aktualizacja: ${formatTimestamp(event.timestamp)}</small>
             `;
         }
 
+        function buildIncidentPopup(event) {
+            const ctx = event.context || {};
+            const metrics = event.metrics || {};
+            const corr = ctx.corroboration || {};
+            const gdynia = (corr.gdynia_segments || [])
+                .map((s) => `seg. ${s.segment_id}: ${s.intensity_vph} poj./h (${s.status})`)
+                .join("<br>");
+            const probes = corr.transit_probes || {};
+            return `
+                <strong>Incydent TomTom</strong> · ${event.city}<br>
+                <strong>Gdzie:</strong> ${event.location?.road_name || "?"}<br>
+                <strong>Status:</strong> ${event.status} · pewność: ${corr.confidence || "?"}<br>
+                <strong>Opóźnienie:</strong> ${metrics.delay_sec ?? "?"} s<br>
+                ${gdynia ? `<br><strong>Pętle Gdynia:</strong><br>${gdynia}` : ""}
+                ${probes.slow_bus_count ? `<br><strong>Autobusy &lt;12 km/h:</strong> ${probes.slow_bus_count}` : ""}
+                <hr style="margin: 5px 0;">
+                <small>${truncateText(ctx.driver_summary_pl, 160)}</small>
+            `;
+        }
+
         function buildPopup(event) {
-            if (getRecordKind(event) === "road_segment") {
-                return buildSegmentPopup(event);
-            }
+            const kind = getRecordKind(event);
+            if (kind === "road_segment") return buildSegmentPopup(event);
+            if (kind === "traffic_incident") return buildIncidentPopup(event);
             return buildVehiclePopup(event);
         }
+
+        function incidentStyle(feature) {
+            const validity = feature.properties.event?.context?.time_validity;
+            const isFuture = validity === "future";
+            return {
+                color: isFuture ? "#7b1fa2" : "#d32f2f",
+                weight: 5,
+                opacity: 0.9,
+                dashArray: isFuture ? "10, 8" : null,
+                lineCap: "round",
+            };
+        }
+
+        function drawIncidents(incidentEvents) {
+            if (incidentsGeoJsonLayer) {
+                incidentsLayer.removeLayer(incidentsGeoJsonLayer);
+                incidentsGeoJsonLayer = null;
+            }
+            let drawn = 0;
+            const lineFeatures = [];
+            for (const event of incidentEvents) {
+                const geometry = normalizeGeometry(event.geometry);
+                if (geometry) {
+                    lineFeatures.push({
+                        type: "Feature",
+                        geometry,
+                        properties: { event },
+                    });
+                    continue;
+                }
+                const lat = event.location?.lat;
+                const lon = event.location?.lon;
+                if (!isValidLocation(lat, lon)) continue;
+                const isFuture = event.context?.time_validity === "future";
+                const marker = L.circleMarker([lat, lon], {
+                    radius: 7,
+                    fillColor: isFuture ? "#7b1fa2" : "#d32f2f",
+                    color: "#fff",
+                    weight: 2,
+                    fillOpacity: 0.9,
+                });
+                bindPopup(marker, buildIncidentPopup(event));
+                incidentsLayer.addLayer(marker);
+                drawn += 1;
+            }
+            if (lineFeatures.length > 0) {
+                incidentsGeoJsonLayer = L.geoJSON(
+                    { type: "FeatureCollection", features: lineFeatures },
+                    {
+                        style: incidentStyle,
+                        onEachFeature: (feature, layer) => {
+                            bindPopup(layer, buildIncidentPopup(feature.properties.event));
+                        },
+                    },
+                );
+                incidentsLayer.addLayer(incidentsGeoJsonLayer);
+                drawn += lineFeatures.length;
+            }
+            return drawn;
+        }
+
+        function formatCityLabel(city) {
+            const labels = {
+                Gdynia: "Gdynia",
+                Gdansk: "Gdańsk",
+                Szczecin: "Szczecin",
+                Swinoujscie: "Świnoujście",
+                Trojmiasto: "Trójmiasto",
+            };
+            return labels[city] || city || "?";
+        }
+
+        function formatSeverityLabel(severity) {
+            if (severity === "CRITICAL") return "Korek";
+            if (severity === "CONGESTION") return "Zagęszczenie";
+            return severity || "Alert";
+        }
+
+        function formatConfidenceLabel(confidence) {
+            if (!confidence) return null;
+            const labels = { high: "wysoka", medium: "średnia", low: "niska" };
+            return labels[confidence] || confidence;
+        }
+
+        const HOURLY_REPORT_VISIBLE = 4;
+
+        function renderHourlyReportPanel(payload) {
+            const report = payload.hourly_report || {};
+            const incidents = report.incidents || [];
+            const generatedAt = report.generated_at
+                ? new Date(report.generated_at).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })
+                : "—";
+
+            const countBadge = document.getElementById("hourly-incident-count");
+            countBadge.textContent = String(incidents.length);
+            countBadge.classList.toggle("zero", incidents.length === 0);
+
+            document.getElementById("hourly-report-meta").textContent =
+                incidents.length > 0
+                    ? `${incidents.length} incydentów · ${generatedAt}`
+                    : `Brak alertów · ${generatedAt}`;
+
+            const headlineEl = document.getElementById("hourly-report-headline");
+            headlineEl.textContent = report.headline_pl || "Brak danych raportu.";
+            headlineEl.classList.toggle("empty", incidents.length === 0);
+
+            const listEl = document.getElementById("hourly-incident-list");
+            listEl.innerHTML = "";
+
+            incidents.slice(0, HOURLY_REPORT_VISIBLE).forEach((item, index) => {
+                const card = document.createElement("article");
+                const severityClass = item.severity === "CONGESTION" ? "congestion" : "critical";
+                card.className = `incident-card ${severityClass}`;
+
+                card.innerHTML = `
+                    <div class="incident-card-header">
+                        <div>
+                            <span class="incident-location">${item.location || "?"}</span>
+                            <span class="incident-city"> · ${formatCityLabel(item.city)}</span>
+                        </div>
+                        <span class="severity-badge ${severityClass}">${formatSeverityLabel(item.severity)}</span>
+                    </div>
+                    <div class="incident-problem">${truncateText(item.problem_pl, 85)}</div>
+                    <div class="driver-action">
+                        <strong>Rek. dla kierowców</strong>
+                        ${truncateText(item.driver_action_pl || "Monitoruj aktualizacje.", 110)}
+                    </div>
+                    ${item.port_context_pl ? `<div class="incident-problem" style="margin-top:4px;color:#1565c0;">${truncateText(item.port_context_pl, 100)}</div>` : ""}
+                `;
+                listEl.appendChild(card);
+            });
+
+            if (incidents.length > HOURLY_REPORT_VISIBLE) {
+                const more = document.createElement("div");
+                more.className = "more-incidents";
+                more.textContent = `+ ${incidents.length - HOURLY_REPORT_VISIBLE} kolejnych w API /hourly-report`;
+                listEl.appendChild(more);
+            }
+        }
+
+        document.getElementById("hourly-report-toggle").addEventListener("click", () => {
+            const panel = document.getElementById("hourly-report-panel");
+            const collapsed = panel.classList.toggle("collapsed");
+            document.getElementById("hourly-report-chevron").textContent = collapsed ? "▸" : "▾";
+            document.getElementById("hourly-report-toggle").setAttribute("aria-expanded", String(!collapsed));
+            setTimeout(() => map.invalidateSize(), 50);
+        });
+
+        function buildPortCallPopup(event) {
+            const ops = event.context?.port_ops || {};
+            const metrics = event.metrics || {};
+            return `
+                <strong>Zawinięcie</strong> · ${formatCityLabel(event.city)}<br>
+                <strong>Statek:</strong> ${metrics.ship_name || "?"} (IMO ${metrics.imo || "?"})<br>
+                <strong>Nabrzeże:</strong> ${ops.berth_name || "?"}<br>
+                <strong>Status:</strong> ${ops.call_status || "?"}<br>
+                <strong>ETA:</strong> ${ops.eta ? formatTimestamp(ops.eta) : "—"}<br>
+                <strong>ATA:</strong> ${ops.ata ? formatTimestamp(ops.ata) : "—"}<br>
+                <strong>LOA:</strong> ${metrics.loa_m ?? "?"} m · DWT ${metrics.dwt ?? "?"}
+            `;
+        }
+
+        function codecoDemandColor(hint) {
+            if (hint === "high") return "#dc2626";
+            if (hint === "medium") return "#d97706";
+            return "#1565c0";
+        }
+
+        function buildContainerActivityPopup(event) {
+            const ops = event.context?.port_ops || {};
+            const metrics = event.metrics || {};
+            return `
+                <strong>Codeco — terminal</strong><br>
+                <strong>Terminal:</strong> ${ops.terminal || "?"} (${formatCityLabel(event.city)})<br>
+                <strong>Ostatnia 1 h:</strong> ${metrics.moves_in_last_hour ?? ops.moves_in_last_hour ?? 0} ruchów
+                    ${(metrics.active_last_hour ?? ops.active_last_hour) ? "(aktywny)" : "(brak ruchu w ostatniej godzinie)"}<br>
+                <strong>Szac. tempo:</strong> ${metrics.moves_last_hour ?? ops.moves_last_hour ?? 0}/h · pełnych: ${metrics.full_moves_last_hour ?? 0}<br>
+                <strong>24 h:</strong> ${metrics.total_moves_24h ?? "?"} (exp. ${metrics.export_moves_24h ?? 0} / imp. ${metrics.import_moves_24h ?? 0})<br>
+                ${ops.plszz_moves_24h ? `<strong>PLSZZ:</strong> ${ops.plszz_moves_24h} ruchów<br>` : ""}
+                <strong>Popyt TIR:</strong> ${ops.truck_demand_hint || "?"}
+            `;
+        }
+
+        function buildCodecoMovePopup(event) {
+            const metrics = event.metrics || {};
+            const ops = event.context?.port_ops || {};
+            return `
+                <strong>Codeco — ruch kontenera</strong><br>
+                <strong>Terminal:</strong> ${metrics.terminal || "?"}<br>
+                <strong>Kierunek:</strong> ${metrics.direction || "?"} · ${metrics.full_empty || "?"}<br>
+                <strong>Z:</strong> ${metrics.load_port || "—"} → <strong>Do:</strong> ${metrics.unload_port || "—"}<br>
+                <small>${formatTimestamp(event.timestamp)}</small>
+            `;
+        }
+
+        function approachZoneStyle(zone) {
+            const active = zone.active_last_hour;
+            const hint = zone.truck_demand_hint;
+            const geomType = zone.geometry?.type;
+            const isLine = geomType === "LineString" || geomType === "MultiLineString";
+            let color = "#94a3b8";
+            let weight = isLine ? 4 : 2;
+            let dashArray = "6,4";
+            let fillColor = "#cbd5e1";
+            let fillOpacity = isLine ? 0 : 0.08;
+
+            if (active) {
+                dashArray = null;
+                weight = isLine ? 6 : 3;
+                if (hint === "high" || zone.priority === "critical") {
+                    color = "#dc2626";
+                    fillColor = "#dc2626";
+                    fillOpacity = isLine ? 0 : 0.18;
+                } else if (hint === "medium" || zone.priority === "high") {
+                    color = "#d97706";
+                    fillColor = "#d97706";
+                    fillOpacity = isLine ? 0 : 0.14;
+                } else {
+                    color = "#1565c0";
+                    fillColor = "#1565c0";
+                    fillOpacity = isLine ? 0 : 0.12;
+                }
+            }
+
+            const corridor = zone.corridor_status;
+            if (corridor === "CRITICAL") {
+                color = "#b91c1c";
+                weight = isLine ? 7 : 4;
+            } else if (corridor === "CONGESTION" && active) {
+                color = "#d97706";
+            }
+
+            if (isLine) {
+                return { color, weight, opacity: active ? 0.92 : 0.55, dashArray };
+            }
+            return { color, weight, dashArray, fillColor, fillOpacity };
+        }
+
+        function roadStatusBadgeClass(status) {
+            if (status === "CRITICAL") return "critical";
+            if (status === "CONGESTION") return "congestion";
+            if (status === "CLEAR") return "clear";
+            return "unknown";
+        }
+
+        function buildRoadStatusHtml(road) {
+            const cls = roadStatusBadgeClass(road.status);
+            return `<span class="road-status-badge ${cls}"><span class="road-status-dot ${cls}"></span>${road.label_pl || "?"}</span>`;
+        }
+
+        function buildApproachZonePopup(zone) {
+            const roads = (zone.roads_pl || []).join(", ");
+            const status = zone.active_last_hour
+                ? `Aktywny ruch: ${zone.moves_in_last_hour}/h · TIR: ${zone.truck_demand_hint}`
+                : "Brak ruchu Codeco w ostatniej godzinie";
+            const roadsStatus = (zone.roads_status || [])
+                .map((road) => `${road.road}: ${road.label_pl}`)
+                .join("<br>");
+            return `
+                <strong>${zone.label || zone.zone_id}</strong><br>
+                <strong>Terminal:</strong> ${zone.terminal || "?"}<br>
+                <strong>Codeco:</strong> ${status}<br>
+                <strong>Ruch drogowy:</strong> ${zone.corridor_status_pl || "—"}<br>
+                <strong>Drogi TIR:</strong> ${roads}<br>
+                ${roadsStatus ? `<strong>Status dróg:</strong><br>${roadsStatus}<br>` : ""}
+                <em>${zone.focus_pl || ""}</em>
+            `;
+        }
+
+        function drawApproachZones(zones) {
+            approachZonesLayer.clearLayers();
+            let drawn = 0;
+            for (const zone of zones || []) {
+                if (!zone.geometry?.coordinates) continue;
+                const layer = L.geoJSON(
+                    { type: "Feature", geometry: zone.geometry, properties: zone },
+                    {
+                        style: () => approachZoneStyle(zone),
+                        onEachFeature: (feature, mapLayer) => {
+                            bindPopup(mapLayer, buildApproachZonePopup(feature.properties));
+                        },
+                    },
+                );
+                approachZonesLayer.addLayer(layer);
+                drawn += 1;
+            }
+            return drawn;
+        }
+
+        function drawCodecoTerminalMarker(event) {
+            const lat = event.location?.lat;
+            const lon = event.location?.lon;
+            const ops = event.context?.port_ops || {};
+            const metrics = event.metrics || {};
+            const active = metrics.active_last_hour ?? ops.active_last_hour;
+            const color = active ? codecoDemandColor(ops.truck_demand_hint) : "#94a3b8";
+            const radius = active
+                ? Math.min(36, Math.max(14, (metrics.activity_radius_m || 200) / 22))
+                : 10;
+
+            const layers = [];
+            if (active) {
+                const circle = L.circle([lat, lon], {
+                    radius,
+                    color,
+                    fillColor: color,
+                    fillOpacity: 0.22,
+                    weight: 3,
+                });
+                bindPopup(circle, buildContainerActivityPopup(event));
+                layers.push(circle);
+            } else {
+                const circle = L.circle([lat, lon], {
+                    radius,
+                    color: "#94a3b8",
+                    fillColor: "#e2e8f0",
+                    fillOpacity: 0.35,
+                    weight: 2,
+                    dashArray: "5,5",
+                });
+                bindPopup(circle, buildContainerActivityPopup(event));
+                layers.push(circle);
+            }
+
+            const hourLabel = active
+                ? `${metrics.moves_in_last_hour ?? ops.moves_in_last_hour ?? 0}/h`
+                : "0/h";
+            const statusTag = active ? "● aktywny" : "○ bez ruchu 1h";
+
+            const label = L.marker([lat, lon], {
+                icon: L.divIcon({
+                    className: "codeco-terminal-label",
+                    html: `<div style="background:rgba(255,255,255,0.95);border:2px solid ${color};border-radius:6px;padding:2px 6px;font-size:10px;font-weight:700;color:#0f172a;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.15);">${ops.terminal || "?"}<br><span style="font-weight:600;color:${color}">${hourLabel}</span> <span style="font-size:9px;color:#64748b">${statusTag}</span></div>`,
+                    iconSize: [90, 40],
+                    iconAnchor: [45, 20],
+                }),
+                interactive: false,
+            });
+            layers.push(label);
+            return layers;
+        }
+
+        function drawPortEvents(portEvents) {
+            portCallsLayer.clearLayers();
+            containerActivityLayer.clearLayers();
+            codecoMovesLayer.clearLayers();
+            let calls = 0;
+            let activities = 0;
+            let codecoMoves = 0;
+
+            for (const event of portEvents || []) {
+                const lat = event.location?.lat;
+                const lon = event.location?.lon;
+                if (!isValidLocation(lat, lon)) continue;
+
+                if (event.record_kind === "port_call") {
+                    const ops = event.context?.port_ops || {};
+                    const color = ops.call_status === "in_port" ? "#1565c0" : "#2e7d32";
+                    const marker = L.circleMarker([lat, lon], {
+                        radius: 8,
+                        fillColor: color,
+                        color: "#fff",
+                        weight: 2,
+                        fillOpacity: 0.9,
+                    });
+                    bindPopup(marker, buildPortCallPopup(event));
+                    portCallsLayer.addLayer(marker);
+                    calls += 1;
+                } else if (event.record_kind === "container_activity") {
+                    drawCodecoTerminalMarker(event).forEach((layer) => containerActivityLayer.addLayer(layer));
+                    activities += 1;
+                } else if (event.record_kind === "codeco_move") {
+                    const metrics = event.metrics || {};
+                    const isExport = metrics.direction === "export";
+                    const isFull = metrics.is_full;
+                    const marker = L.circleMarker([lat, lon], {
+                        radius: isFull ? 5 : 4,
+                        fillColor: isExport ? "#e65100" : "#0277bd",
+                        color: "#fff",
+                        weight: 1,
+                        fillOpacity: 0.85,
+                    });
+                    bindPopup(marker, buildCodecoMovePopup(event));
+                    codecoMovesLayer.addLayer(marker);
+                    codecoMoves += 1;
+                }
+            }
+            return { calls, activities, codecoMoves };
+        }
+
+        let expandedCityAccordions = new Set();
+
+        function renderPortOpsPanel(payload) {
+            const summary = payload.port_summary || {};
+            const dashboard = payload.city_port_dashboard || [];
+            const catalog = payload.terminals_catalog || [];
+            const activeTerminals = catalog.filter((t) => t.active_last_hour);
+            const total = catalog.length;
+
+            document.getElementById("port-ops-count").textContent = String(activeTerminals.length);
+            document.getElementById("port-ops-count").classList.toggle("zero", activeTerminals.length === 0);
+            document.getElementById("port-ops-meta").textContent =
+                `${activeTerminals.length}/${total} terminali aktywnych (1 h) · ${summary.codeco_moves_on_map || 0} ruchów na mapie`;
+
+            const listEl = document.getElementById("port-ops-list");
+            listEl.innerHTML = "";
+
+            if (!dashboard.length) {
+                listEl.innerHTML = '<div class="more-incidents">Brak danych operacji portowych.</div>';
+                return;
+            }
+
+            if (!expandedCityAccordions.size) {
+                const firstActive = dashboard.find((city) => city.active_terminals > 0);
+                expandedCityAccordions.add((firstActive || dashboard[0]).key);
+            }
+
+            dashboard.forEach((city) => {
+                const accordion = document.createElement("section");
+                const isExpanded = expandedCityAccordions.has(city.key);
+                accordion.className = `city-accordion${isExpanded ? "" : " collapsed"}`;
+                accordion.dataset.cityKey = city.key;
+
+                const header = document.createElement("button");
+                header.type = "button";
+                header.className = "city-accordion-header";
+                header.setAttribute("aria-expanded", String(isExpanded));
+                header.innerHTML = `
+                    <div>
+                        <div class="city-title">${city.label}</div>
+                        <div class="city-meta">${city.active_terminals}/${city.total_terminals} terminali · ruch drogowy: <strong>${city.corridor_status_pl || "?"}</strong></div>
+                    </div>
+                    <span class="city-chevron">${isExpanded ? "▾" : "▸"}</span>
+                `;
+                header.addEventListener("click", () => {
+                    const collapsed = accordion.classList.toggle("collapsed");
+                    header.querySelector(".city-chevron").textContent = collapsed ? "▸" : "▾";
+                    header.setAttribute("aria-expanded", String(!collapsed));
+                    if (collapsed) {
+                        expandedCityAccordions.delete(city.key);
+                    } else {
+                        expandedCityAccordions.add(city.key);
+                    }
+                });
+
+                const body = document.createElement("div");
+                body.className = "city-accordion-body";
+
+                const terminalsTitle = document.createElement("div");
+                terminalsTitle.className = "city-section-title";
+                terminalsTitle.textContent = "Terminale";
+                body.appendChild(terminalsTitle);
+
+                (city.terminals || []).forEach((terminal) => {
+                    const card = document.createElement("article");
+                    const active = terminal.active_last_hour;
+                    const hint = terminal.truck_demand_hint;
+                    const zoneMatch = (payload.approach_zones || []).find(
+                        (z) => z.terminal === terminal.terminal && z.active_last_hour,
+                    );
+                    const justActivated = zoneMatch && recentlyActivatedZoneIds.has(zoneMatch.zone_id);
+                    card.className = `terminal-card${!active ? " idle" : ""}${active && hint === "high" ? " warn" : ""}${justActivated ? " tir-activated" : ""}`;
+                    const stats = active
+                        ? `● ${terminal.moves_in_last_hour}/h · popyt TIR: ${hint} · 24h: ${terminal.total_moves_24h || 0}`
+                        : `○ brak ruchu 1h · 24h: ${terminal.total_moves_24h || 0}`;
+                    const tirRoads = (terminal.tir_roads || []).length
+                        ? `<div class="terminal-stats">Drogi TIR: ${terminal.tir_roads.join(", ")}</div>`
+                        : "";
+                    card.innerHTML = `
+                        <div class="terminal-name">${terminal.terminal} — ${terminal.label || ""}</div>
+                        <div class="terminal-desc">${terminal.description_pl || "Brak opisu terminala."}</div>
+                        <div class="terminal-stats">${stats}</div>
+                        ${tirRoads}
+                    `;
+                    body.appendChild(card);
+                });
+
+                const roadsTitle = document.createElement("div");
+                roadsTitle.className = "city-section-title";
+                roadsTitle.textContent = "Stan dróg dojazdowych TIR";
+                body.appendChild(roadsTitle);
+
+                const roadsList = document.createElement("div");
+                roadsList.className = "road-status-list";
+                (city.roads_status || []).forEach((road) => {
+                    const row = document.createElement("div");
+                    row.className = "road-status-item";
+                    row.innerHTML = `<span class="road-name">${road.road}</span>${buildRoadStatusHtml(road)}`;
+                    roadsList.appendChild(row);
+                });
+                if (!(city.roads_status || []).length) {
+                    roadsList.innerHTML = '<div class="more-incidents">Brak zdefiniowanych dróg TIR.</div>';
+                }
+                body.appendChild(roadsList);
+
+                accordion.appendChild(header);
+                accordion.appendChild(body);
+                listEl.appendChild(accordion);
+            });
+        }
+
+        document.getElementById("port-ops-toggle").addEventListener("click", () => {
+            const panel = document.getElementById("port-ops-panel");
+            const collapsed = panel.classList.toggle("collapsed");
+            document.getElementById("port-ops-chevron").textContent = collapsed ? "▸" : "▾";
+            document.getElementById("port-ops-toggle").setAttribute("aria-expanded", String(!collapsed));
+        });
 
         function drawSegmentsBatch(segmentEvents) {
             if (segmentsGeoJsonLayer) {
@@ -477,7 +1795,7 @@
                 {
                     style: segmentStyle,
                     onEachFeature: (feature, layer) => {
-                        layer.bindPopup(buildPopup(feature.properties.event));
+                        bindPopup(layer, buildPopup(feature.properties.event));
                     },
                 },
             );
@@ -501,7 +1819,7 @@
                 opacity: 1,
                 fillOpacity: 0.9,
             });
-            marker.bindPopup(buildPopup(event));
+            bindPopup(marker, buildPopup(event));
             segmentsLayer.addLayer(marker);
             return true;
         }
@@ -522,7 +1840,7 @@
                 opacity: 1,
                 fillOpacity: 0.8,
             });
-            marker.bindPopup(buildPopup(event));
+            bindPopup(marker, buildPopup(event));
             vehiclesLayer.addLayer(marker);
             return true;
         }
@@ -549,25 +1867,43 @@
 
                 const payload = await response.json();
                 const data = payload.events || [];
+                const portEvents = payload.port_events || [];
+                lastEvents = data.concat(portEvents);
                 segmentsLayer.clearLayers();
                 vehiclesLayer.clearLayers();
+                incidentsLayer.clearLayers();
                 segmentsGeoJsonLayer = null;
+                incidentsGeoJsonLayer = null;
 
                 let drawn = 0;
                 let skipped = 0;
                 let segmentsDrawn = 0;
                 let vehiclesDrawn = 0;
+                let incidentsDrawn = 0;
 
                 const segmentEvents = [];
                 const vehicleEvents = [];
+                const incidentEvents = [];
 
                 data.forEach((event) => {
-                    if (getRecordKind(event) === "road_segment") {
-                        segmentEvents.push(event);
-                    } else {
-                        vehicleEvents.push(event);
-                    }
+                    const kind = getRecordKind(event);
+                    if (kind === "road_segment") segmentEvents.push(event);
+                    else if (kind === "traffic_incident") incidentEvents.push(event);
+                    else if (kind === "port_call" || kind === "container_activity" || kind === "codeco_move") return;
+                    else vehicleEvents.push(event);
                 });
+
+                const portDrawn = drawPortEvents(portEvents);
+                const zonesDrawn = drawApproachZones(payload.approach_zones);
+                const tirActivations = checkTirZoneAlerts(payload.approach_zones);
+                if (tirActivations.length) {
+                    recentlyActivatedZoneIds = new Set(tirActivations.map((zone) => zone.zone_id));
+                    setTimeout(() => recentlyActivatedZoneIds.clear(), 12000);
+                }
+                drawn += portDrawn.calls + portDrawn.activities + portDrawn.codecoMoves;
+                renderPortOpsPanel(payload);
+                renderCodecoHourlyChart(payload.codeco_hourly_24h || payload.port_summary?.codeco_hourly_24h);
+                handleTirZoneActivations(tirActivations);
 
                 segmentsDrawn = drawSegmentsBatch(segmentEvents);
                 drawn += segmentsDrawn;
@@ -595,8 +1931,12 @@
                     }
                 });
 
+                incidentsDrawn = drawIncidents(incidentEvents);
+                drawn += incidentsDrawn;
+                renderHourlyReportPanel(payload);
+
                 if (!hasLoadedOnce && segmentsDrawn > 0) {
-                    zoomToGdyniaSegments();
+                    zoomToCity("gdynia");
                 }
 
                 const now = new Date().toLocaleTimeString("pl-PL");
@@ -604,7 +1944,7 @@
                     ? Math.round(payload.age_seconds)
                     : "?";
                 const baseStatus =
-                    `Odcinki: ${segmentsDrawn} | Autobusy: ${vehiclesDrawn} | Pominięte: ${skipped} | Wiek danych: ${age} s | Widok: ${now}`;
+                    `Odcinki: ${segmentsDrawn} | Autobusy: ${vehiclesDrawn} | Incydenty: ${incidentsDrawn} | Terminale: ${(payload.terminals_catalog || []).filter(t => t.active_last_hour).length}/${(payload.terminals_catalog || []).length} | Strefy TIR: ${zonesDrawn} | Gardła: ${(payload.bottlenecks || []).length} | Wiek: ${age} s | ${now}`;
                 startCountdown(baseStatus);
                 console.log(`Zaktualizowano dane o ruchu: ${now} (${drawn} punktów, wiek ${age}s)`);
 
@@ -639,14 +1979,36 @@
 
         const legend = L.control({ position: "topright" });
         legend.onAdd = function () {
-            const div = L.DomUtil.create("div", "legend");
-            div.innerHTML += "<strong>Typ danych</strong><br>";
-            div.innerHTML += '<i class="line-sample" style="background: #666;"></i> Odcinek drogi (Gdynia)<br>';
-            div.innerHTML += '<i style="background: #666;"></i> Autobus (Gdańsk, Szczecin)<br>';
-            div.innerHTML += "<br><strong>Stan ruchu</strong><br>";
-            div.innerHTML += `<i style="background: ${statusColors.CLEAR}"></i> Płynny (≥ 25 km/h)<br>`;
-            div.innerHTML += `<i style="background: ${statusColors.CONGESTION}"></i> Zagęszczenie (12–25 km/h)<br>`;
-            div.innerHTML += `<i style="background: ${statusColors.CRITICAL}"></i> Korek (< 12 km/h)<br>`;
+            const div = L.DomUtil.create("div", "legend collapsed");
+            div.innerHTML = `
+                <button type="button" class="panel-toggle" id="legend-toggle" aria-expanded="false">
+                    <span>Legenda</span><span class="chevron" id="legend-chevron">▸</span>
+                </button>
+                <div class="legend-body">
+                    <strong>Typ danych</strong><br>
+                    <i class="line-sample" style="background: #666;"></i> Odcinek (Gdynia)<br>
+                    <i style="background: #666;"></i> Autobus<br>
+                    <i class="line-sample" style="background: #d32f2f;"></i> Incydent (teraz)<br>
+                    <i class="line-sample" style="background: #7b1fa2;"></i> Planowany<br>
+                    <i style="background: #1565c0;"></i> Zawinięcie<br>
+                    <i class="line-sample" style="background: #dc2626;"></i> Codeco terminal (wysoki TIR)<br>
+                    <i style="background: #e65100;"></i> Codeco eksport<br>
+                    <i style="background: #0277bd;"></i> Codeco import<br>
+                    <i class="line-sample" style="background: #dc2626; opacity:0.5;"></i> Strefa TIR aktywna<br>
+                    <i class="line-sample" style="background: #94a3b8; opacity:0.4;"></i> Strefa TIR — bez ruchu 1h<br>
+                    <br><strong>Stan ruchu</strong><br>
+                    <i style="background: ${statusColors.CLEAR}"></i> Płynny<br>
+                    <i style="background: ${statusColors.CONGESTION}"></i> Zagęszczenie<br>
+                    <i style="background: ${statusColors.CRITICAL}"></i> Korek
+                </div>
+            `;
+            L.DomEvent.disableClickPropagation(div);
+            const toggle = div.querySelector("#legend-toggle");
+            toggle.addEventListener("click", () => {
+                const collapsed = div.classList.toggle("collapsed");
+                div.querySelector("#legend-chevron").textContent = collapsed ? "▸" : "▾";
+                toggle.setAttribute("aria-expanded", String(!collapsed));
+            });
             return div;
         };
         legend.addTo(map);

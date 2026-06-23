@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -13,6 +14,26 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from port_data_loader import port_data_store
+from port_events import (
+    build_approach_zones,
+    build_city_port_dashboard,
+    build_codeco_hourly_24h,
+    build_port_map_events,
+    build_port_summary,
+    build_terminals_catalog,
+)
+from traffic_fusion import fuse_traffic_events
+from traffic_history import TrafficHistory
+from traffic_intelligence import (
+    build_hourly_incidents_report,
+    build_operational_report,
+    build_predictions,
+    collect_segment_trends,
+    detect_anomalies,
+)
+from tomtom_traffic import collect_tomtom_events, get_tomtom_api_key
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -23,6 +44,7 @@ GDANSK_GPS_URL = "https://ckan2.multimediagdansk.pl/gpsPositions?v=2"
 
 REQUEST_TIMEOUT = 15.0
 CACHE_REFRESH_INTERVAL_SECONDS = 30.0
+PORT_DATA_REFRESH_INTERVAL_SECONDS = 300.0
 GDYNIA_API_UPDATE_INTERVAL_SECONDS = 300.0
 KAFKA_BOOTSTRAP_SERVERS = "localhost:8081"
 KAFKA_TOPIC = "port-traffic-events"
@@ -30,6 +52,7 @@ KAFKA_TOPIC = "port-traffic-events"
 kafka_producer: AIOKafkaProducer | None = None
 cache_refresh_task: asyncio.Task[None] | None = None
 gdynia_watch_task: asyncio.Task[None] | None = None
+port_data_refresh_task: asyncio.Task[None] | None = None
 
 
 class TrafficCache:
@@ -63,6 +86,10 @@ class TrafficCache:
             if incoming_fingerprint is None:
                 incoming_fingerprint = gdynia_fingerprint_from_events(events)
 
+            global _previous_tomtom_present
+            _previous_tomtom_present = traffic_history.seen_tomtom_present_ids()
+            traffic_history.record_snapshot(events)
+
             async with self._lock:
                 self.events = events
                 self.updated_at = datetime.now(timezone.utc)
@@ -93,6 +120,8 @@ class TrafficCache:
 
 
 traffic_cache = TrafficCache()
+traffic_history = TrafficHistory()
+_previous_tomtom_present: set[str] = set()
 
 
 async def cache_refresh_loop() -> None:
@@ -121,9 +150,18 @@ async def gdynia_watch_loop() -> None:
             logger.warning("Gdynia watch loop failed: %s", exc)
 
 
+async def port_data_refresh_loop() -> None:
+    while True:
+        await asyncio.sleep(PORT_DATA_REFRESH_INTERVAL_SECONDS)
+        try:
+            port_data_store.refresh()
+        except Exception as exc:
+            logger.warning("Port data refresh failed: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global kafka_producer, cache_refresh_task, gdynia_watch_task
+    global kafka_producer, cache_refresh_task, gdynia_watch_task, port_data_refresh_task
     producer = AIOKafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         value_serializer=lambda value: json.dumps(value, ensure_ascii=False).encode("utf-8"),
@@ -138,18 +176,25 @@ async def lifespan(_: FastAPI):
         logger.warning("Kafka producer unavailable: %s", exc)
 
     try:
+        port_data_store.refresh()
+    except Exception as exc:
+        logger.warning("Initial port data load failed: %s", exc)
+
+    try:
         await traffic_cache.refresh(is_startup=True)
     except Exception as exc:
         logger.warning("Initial cache refresh on startup failed: %s", exc)
 
     cache_refresh_task = asyncio.create_task(cache_refresh_loop())
     gdynia_watch_task = asyncio.create_task(gdynia_watch_loop())
+    port_data_refresh_task = asyncio.create_task(port_data_refresh_loop())
     try:
         yield
     finally:
         for task_name, task in (
             ("cache_refresh_task", cache_refresh_task),
             ("gdynia_watch_task", gdynia_watch_task),
+            ("port_data_refresh_task", port_data_refresh_task),
         ):
             if task is not None:
                 task.cancel()
@@ -159,6 +204,7 @@ async def lifespan(_: FastAPI):
                     pass
         cache_refresh_task = None
         gdynia_watch_task = None
+        port_data_refresh_task = None
         if kafka_producer is not None:
             await kafka_producer.stop()
             kafka_producer = None
@@ -540,28 +586,47 @@ def gdynia_fingerprint_from_events(events: list[dict[str, Any]]) -> str | None:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-async def collect_port_traffic() -> list[dict[str, Any]]:
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        (
-            gdynia_intensities_raw,
-            gdynia_segments_raw,
-            szczecin_raw,
-            gdansk_raw,
-        ) = await asyncio.gather(
-            fetch_text(client, GDYNIA_TRAFFIC_INTENSITIES_URL, "Gdynia intensities"),
-            fetch_text(client, GDYNIA_ROAD_SEGMENTS_URL, "Gdynia segments"),
-            fetch_text(client, SZCZECIN_VEHICLES_URL, "Szczecin"),
-            fetch_text(client, GDANSK_GPS_URL, "Gdansk"),
-        )
+async def collect_ztm_traffic(client: httpx.AsyncClient) -> list[dict[str, Any]]:
+    (
+        gdynia_intensities_raw,
+        gdynia_segments_raw,
+        szczecin_raw,
+        gdansk_raw,
+    ) = await asyncio.gather(
+        fetch_text(client, GDYNIA_TRAFFIC_INTENSITIES_URL, "Gdynia intensities"),
+        fetch_text(client, GDYNIA_ROAD_SEGMENTS_URL, "Gdynia segments"),
+        fetch_text(client, SZCZECIN_VEHICLES_URL, "Szczecin"),
+        fetch_text(client, GDANSK_GPS_URL, "Gdansk"),
+    )
 
     intensities = parse_gdynia_intensities(gdynia_intensities_raw)
     segments = parse_gdynia_segments(gdynia_segments_raw)
 
-    unified: list[dict[str, Any]] = []
-    unified.extend(build_gdynia_events(intensities, segments))
-    unified.extend(build_szczecin_events(szczecin_raw))
-    unified.extend(build_gdansk_events(gdansk_raw))
-    return unified
+    ztm_events: list[dict[str, Any]] = []
+    ztm_events.extend(build_gdynia_events(intensities, segments))
+    ztm_events.extend(build_szczecin_events(szczecin_raw))
+    ztm_events.extend(build_gdansk_events(gdansk_raw))
+    return ztm_events
+
+
+async def collect_port_traffic() -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        ztm_task = collect_ztm_traffic(client)
+        api_key = get_tomtom_api_key()
+        if api_key:
+            ztm_events, tomtom_events = await asyncio.gather(
+                ztm_task,
+                collect_tomtom_events(client, api_key),
+            )
+        else:
+            if not os.environ.get("TOMTOM_API_KEY"):
+                logger.info("TOMTOM_API_KEY not set — running ZTM sources only")
+            ztm_events = await ztm_task
+            tomtom_events = []
+
+    segment_trends = collect_segment_trends(traffic_history)
+    port_events = build_port_map_events(port_data_store)
+    return fuse_traffic_events(ztm_events, tomtom_events, segment_trends, port_events)
 
 
 def parse_event_datetime(raw: str) -> datetime | None:
@@ -640,6 +705,91 @@ def build_gdynia_source_metadata(events: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
+def build_tomtom_source_metadata(events: list[dict[str, Any]]) -> dict[str, Any]:
+    tomtom_events = [e for e in events if e.get("source_type") == "tomtom_traffic"]
+    present = [e for e in tomtom_events if (e.get("context") or {}).get("time_validity") == "present"]
+    future = [e for e in tomtom_events if (e.get("context") or {}).get("time_validity") == "future"]
+    high_confidence = [
+        e for e in present if (e.get("context") or {}).get("corroboration", {}).get("confidence") == "high"
+    ]
+    return {
+        "record_kind": "traffic_incident",
+        "event_count": len(tomtom_events),
+        "present_count": len(present),
+        "future_count": len(future),
+        "high_confidence_count": len(high_confidence),
+        "enabled": get_tomtom_api_key() is not None,
+    }
+
+
+def build_swinoujscie_source_metadata(events: list[dict[str, Any]]) -> dict[str, Any]:
+    swi_events = [e for e in events if e.get("city") == "Swinoujscie"]
+    tomtom = [e for e in swi_events if e.get("source_type") == "tomtom_traffic"]
+    port_proxy = [
+        e
+        for e in swi_events
+        if e.get("source_type") == "port_pcs"
+        or (e.get("context") or {}).get("port_ops", {}).get("plszz_related")
+    ]
+    return {
+        "record_kind": "mixed",
+        "event_count": len(swi_events),
+        "tomtom_incident_count": len(tomtom),
+        "port_proxy_count": len(port_proxy),
+        "data_quality": "tomtom_and_port_proxy",
+        "note_pl": (
+            "Brak publicznego API ZTM/pętli dla Świnoujścia — "
+            "dane drogowe z TomTom, operacje portowe z proxy PLSZZ (Codeco)."
+        ),
+    }
+
+
+def build_port_pcs_metadata() -> dict[str, Any]:
+    summary = build_port_summary(port_data_store)
+    return {
+        "record_kind": "port_operations",
+        "source": "pcs_excel",
+        **summary,
+    }
+
+
+async def get_port_operations_payload() -> dict[str, Any]:
+    port_events = build_port_map_events(port_data_store)
+    return {
+        "summary": build_port_summary(port_data_store),
+        "port_calls": [e for e in port_events if e.get("record_kind") == "port_call"],
+        "container_activity": [
+            e for e in port_events if e.get("record_kind") == "container_activity"
+        ],
+    }
+
+
+async def get_cached_events() -> list[dict[str, Any]]:
+    events, _ = await traffic_cache.get_snapshot()
+    if not events:
+        await traffic_cache.refresh(is_startup=True)
+        events, _ = await traffic_cache.get_snapshot()
+    return events
+
+
+def intelligence_snapshot(events: list[dict[str, Any]]) -> dict[str, Any]:
+    anomalies = detect_anomalies(
+        events,
+        traffic_history,
+        previous_tomtom_present=_previous_tomtom_present,
+    )
+    predictions = build_predictions(events, traffic_history)
+    report = build_operational_report(events, traffic_history, anomalies=anomalies, predictions=predictions)
+    hourly_report = build_hourly_incidents_report(events, traffic_history, window_minutes=60)
+    return {
+        "anomalies": anomalies,
+        "predictions": predictions,
+        "report": report,
+        "hourly_report": hourly_report,
+        "bottlenecks": traffic_history.rank_bottlenecks(window_minutes=60, limit=10),
+    }
+
+
 def enrich_gdynia_metadata(events: list[dict[str, Any]]) -> dict[str, Any]:
     metadata = build_gdynia_source_metadata(events)
     metadata["data_fingerprint"] = traffic_cache.gdynia_fingerprint
@@ -692,22 +842,88 @@ async def get_port_traffic(
 
 @app.get("/api/v1/map-data")
 async def get_map_data() -> dict[str, Any]:
-    events, updated_at = await traffic_cache.get_snapshot()
-    if not events:
-        await traffic_cache.refresh(is_startup=True)
-        events, updated_at = await traffic_cache.get_snapshot()
+    events = await get_cached_events()
+    _, updated_at = await traffic_cache.get_snapshot()
+    intel = intelligence_snapshot(events)
+    port_events = build_port_map_events(port_data_store)
+    road_events = [e for e in events if e.get("record_kind") not in ("port_call", "container_activity", "codeco_move")]
 
     return {
-        "events": events,
+        "events": road_events,
+        "port_events": port_events,
+        "port_summary": build_port_summary(port_data_store),
+        "terminals_catalog": build_terminals_catalog(port_data_store),
+        "approach_zones": build_approach_zones(port_data_store, traffic_events=road_events),
+        "city_port_dashboard": build_city_port_dashboard(port_data_store, traffic_events=road_events),
+        "codeco_hourly_24h": build_codeco_hourly_24h(port_data_store),
         "cached_at": updated_at.isoformat() if updated_at else None,
         "age_seconds": traffic_cache.age_seconds(),
         "refresh_interval_seconds": CACHE_REFRESH_INTERVAL_SECONDS,
+        "bottlenecks": intel["bottlenecks"],
+        "operational_report": intel["report"],
+        "hourly_report": intel["hourly_report"],
         "sources": {
             "gdynia": enrich_gdynia_metadata(events),
             "szczecin": build_city_source_metadata(events, "Szczecin", "vehicle"),
             "gdansk": build_city_source_metadata(events, "Gdansk", "vehicle"),
+            "swinoujscie": build_swinoujscie_source_metadata(events),
+            "tomtom": build_tomtom_source_metadata(events),
+            "port_pcs": build_port_pcs_metadata(),
         },
     }
+
+
+@app.get("/api/v1/port-operations")
+async def get_port_operations() -> dict[str, Any]:
+    return await get_port_operations_payload()
+
+
+@app.get("/api/v1/hourly-report")
+async def get_hourly_report(
+    window_minutes: int = Query(default=60, ge=15, le=240),
+) -> dict[str, Any]:
+    events = await get_cached_events()
+    return build_hourly_incidents_report(events, traffic_history, window_minutes=window_minutes)
+
+
+@app.get("/api/v1/bottlenecks")
+async def get_bottlenecks(
+    window_minutes: int = Query(default=60, ge=5, le=120),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> dict[str, Any]:
+    events = await get_cached_events()
+    return {
+        "window_minutes": window_minutes,
+        "bottlenecks": traffic_history.rank_bottlenecks(window_minutes=window_minutes, limit=limit),
+        "event_count": len(events),
+    }
+
+
+@app.get("/api/v1/anomalies")
+async def get_anomalies() -> dict[str, Any]:
+    events = await get_cached_events()
+    anomalies = detect_anomalies(
+        events,
+        traffic_history,
+        previous_tomtom_present=_previous_tomtom_present,
+    )
+    return {"anomalies": anomalies, "count": len(anomalies)}
+
+
+@app.get("/api/v1/predictions")
+async def get_predictions(
+    horizon_minutes: int = Query(default=60, ge=15, le=240),
+) -> dict[str, Any]:
+    events = await get_cached_events()
+    predictions = build_predictions(events, traffic_history, horizon_minutes=horizon_minutes)
+    return {"horizon_minutes": horizon_minutes, "predictions": predictions, "count": len(predictions)}
+
+
+@app.get("/api/v1/operational-report")
+async def get_operational_report() -> dict[str, Any]:
+    events = await get_cached_events()
+    intel = intelligence_snapshot(events)
+    return intel["report"]
 
 
 @app.get("/")

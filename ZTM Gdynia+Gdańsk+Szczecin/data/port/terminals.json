@@ -1,0 +1,79 @@
+{
+  "terminals": {
+    "DCT": {
+      "lat": 54.383,
+      "lon": 18.722,
+      "city": "Gdansk",
+      "label": "DCT Gdańsk",
+      "corridor": "trojmiasto_port",
+      "description_pl": "Największy terminal kontenerowy w Polsce. Obsługuje przeładunki deep-sea i feedery. Główny dojazd TIR: S6 (Trasa Sucharskiego) → ul. Portowa."
+    },
+    "GCT": {
+      "lat": 54.528,
+      "lon": 18.545,
+      "city": "Gdynia",
+      "label": "GCT Gdynia",
+      "corridor": "trojmiasto_port",
+      "description_pl": "Gdynia Container Terminal przy ul. Marynarki Polskiej. Kluczowy węzeł kontenerowy Trójmiasta, dojazd TIR przez estakadę Kwiatkowskiego i obwodnicę S6."
+    },
+    "BCT": {
+      "lat": 54.402,
+      "lon": 18.668,
+      "city": "Gdansk",
+      "label": "Baltic Hub",
+      "corridor": "trojmiasto_port",
+      "description_pl": "Baltic Hub (dawny terminal T2 DCT) w rejonie Nowego Portu. Obsługuje kontenery i przeładunki intermodalne. Dojazd TIR: ul. mjr. Sucharskiego i drogi portowe."
+    },
+    "DBPS": {
+      "lat": 54.395,
+      "lon": 18.655,
+      "city": "Gdansk",
+      "label": "DBPS",
+      "corridor": "trojmiasto_port",
+      "description_pl": "Depozyt Basen Północny Śródmieście — terminale przy ul. Wiślanej i Krakowskiej. Ruch TIR głównie lokalny z kierunku Portu Północnego."
+    },
+    "PLSZZ": {
+      "lat": 53.905,
+      "lon": 14.255,
+      "city": "Swinoujscie",
+      "label": "Port Szczecin-Świnoujście",
+      "corridor": "west_port",
+      "description_pl": "Zachodni kompleks portowy (Szczecin + Świnoujście). Dojazd TIR: S3, DK93, tunel pod Świną, ul. Wojska Polskiego."
+    },
+    "PLGDY": {
+      "lat": 54.528,
+      "lon": 18.545,
+      "city": "Gdynia",
+      "label": "Port Gdynia",
+      "corridor": "trojmiasto_port",
+      "description_pl": "Port Gdynia — nabrzeża uniwersalne i promowe. Wspólny korytarz dojazdu TIR z GCT (Marynarki Polskiej, estakada Kwiatkowskiego)."
+    },
+    "PLGDN": {
+      "lat": 54.383,
+      "lon": 18.722,
+      "city": "Gdansk",
+      "label": "Port Gdańsk",
+      "corridor": "trojmiasto_port",
+      "description_pl": "Port Gdańsk — złożony kompleks basenów (Północny, Główny, Ostrów). Wspólne korytarze TIR z terminalami DCT i BCT."
+    }
+  },
+  "berths": {
+    "Oliwskie": {"lat": 54.405, "lon": 18.655, "city": "Gdansk"},
+    "Wiślane": {"lat": 54.398, "lon": 18.662, "city": "Gdansk"},
+    "Chemików": {"lat": 54.392, "lon": 18.668, "city": "Gdansk"},
+    "Krakowskie": {"lat": 54.401, "lon": 18.648, "city": "Gdansk"},
+    "Flisaków": {"lat": 54.397, "lon": 18.651, "city": "Gdansk"},
+    "Obrońców Westerplatte": {"lat": 54.408, "lon": 18.678, "city": "Gdansk"},
+    "PLGDN - DCT - T1": {"lat": 54.383, "lon": 18.718, "city": "Gdansk", "terminal": "DCT"},
+    "PLGDN - DCT - T2": {"lat": 54.384, "lon": 18.725, "city": "Gdansk", "terminal": "DCT"},
+    "DCT -Przeładunkowe": {"lat": 54.382, "lon": 18.720, "city": "Gdansk", "terminal": "DCT"},
+    "Stocznia Remontowa - GSR": {"lat": 54.410, "lon": 18.640, "city": "Gdansk"},
+    "BPPP Stanowisko P": {"lat": 54.390, "lon": 18.670, "city": "Gdansk"}
+  },
+  "terminal_aliases": {
+    "DCT": "DCT",
+    "GCT": "GCT",
+    "BCT": "BCT",
+    "DBPS": "DBPS"
+  }
+}

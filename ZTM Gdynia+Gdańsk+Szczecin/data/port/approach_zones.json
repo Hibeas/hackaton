@@ -1,0 +1,185 @@
+{
+  "zones": [
+    {
+      "zone_id": "dct_s6_sucharski",
+      "terminal": "DCT",
+      "city": "Gdansk",
+      "label": "S6 / Trasa Sucharskiego → DCT",
+      "priority": "critical",
+      "roads_pl": ["S6", "Trasa Sucharskiego"],
+      "focus_pl": "Główny korytarz TIR z obwodnicy do terminala kontenerowego DCT",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.478, 54.362], [18.512, 54.368], [18.558, 54.374],
+          [18.612, 54.380], [18.668, 54.386], [18.718, 54.391], [18.735, 54.393]
+        ]
+      }
+    },
+    {
+      "zone_id": "dct_portowa",
+      "terminal": "DCT",
+      "city": "Gdansk",
+      "label": "ul. Portowa → DCT",
+      "priority": "critical",
+      "roads_pl": ["ul. Portowa"],
+      "focus_pl": "Ostatni odcinek dojazdu TIR na teren DCT",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.726, 54.384], [18.730, 54.387], [18.734, 54.390], [18.738, 54.393]
+        ]
+      }
+    },
+    {
+      "zone_id": "dct_obwodnica",
+      "terminal": "DCT",
+      "city": "Gdansk",
+      "label": "Obwodnica Trójmiejska (odcinek portowy)",
+      "priority": "high",
+      "roads_pl": ["Obwodnica Trójmiejska", "S6"],
+      "focus_pl": "Rozproszenie ruchu TIR przed wjazdem na Trasę Sucharskiego",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.592, 54.396], [18.628, 54.400], [18.662, 54.399], [18.698, 54.396]
+        ]
+      }
+    },
+    {
+      "zone_id": "bct_sucharskiego",
+      "terminal": "BCT",
+      "city": "Gdansk",
+      "label": "ul. mjr. Sucharskiego → Baltic Hub",
+      "priority": "high",
+      "roads_pl": ["ul. mjr. Sucharskiego", "S7"],
+      "focus_pl": "Dojazd TIR do Baltic Hub i basenów wschodnich",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.642, 54.394], [18.658, 54.398], [18.672, 54.403], [18.682, 54.408]
+        ]
+      }
+    },
+    {
+      "zone_id": "bct_nowy_port",
+      "terminal": "BCT",
+      "city": "Gdansk",
+      "label": "Drogi do Nowego Portu",
+      "priority": "high",
+      "roads_pl": ["drogi do Nowego Portu", "Obwodnica"],
+      "focus_pl": "Lokalny dojazd TIR do terminali w rejonie Nowego Portu",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.668, 54.400], [18.676, 54.405], [18.684, 54.410], [18.690, 54.414]
+        ]
+      }
+    },
+    {
+      "zone_id": "dbps_wislana",
+      "terminal": "DBPS",
+      "city": "Gdansk",
+      "label": "ul. Wiślana / Krakowska → DBPS",
+      "priority": "medium",
+      "roads_pl": ["ul. Wiślana", "ul. Krakowska"],
+      "focus_pl": "Dojazd TIR do terminali basenu Północnego (DBPS)",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.644, 54.394], [18.652, 54.397], [18.660, 54.400], [18.668, 54.402]
+        ]
+      }
+    },
+    {
+      "zone_id": "dbps_port_polnocny",
+      "terminal": "DBPS",
+      "city": "Gdansk",
+      "label": "Port Północny — wjazd TIR",
+      "priority": "medium",
+      "roads_pl": ["Port Północny"],
+      "focus_pl": "Wjazd na teren portowy od strony basenu Północnego",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.656, 54.398], [18.662, 54.400], [18.668, 54.401]
+        ]
+      }
+    },
+    {
+      "zone_id": "gct_marynarki",
+      "terminal": "GCT",
+      "city": "Gdynia",
+      "label": "ul. Marynarki Polskiej → GCT",
+      "priority": "critical",
+      "roads_pl": ["ul. Marynarki Polskiej"],
+      "focus_pl": "Kluczowy korytarz TIR do Gdynia Container Terminal",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.532, 54.516], [18.540, 54.522], [18.548, 54.528], [18.554, 54.532]
+        ]
+      }
+    },
+    {
+      "zone_id": "gct_kwiatkowskiego",
+      "terminal": "GCT",
+      "city": "Gdynia",
+      "label": "Estakada Kwiatkowskiego / S6",
+      "priority": "critical",
+      "roads_pl": ["Estakada Kwiatkowskiego", "S6", "Obwodnica Gdyni"],
+      "focus_pl": "Główny węzeł łączący obwodnicę z portem w Gdyni",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [18.508, 54.522], [18.522, 54.526], [18.538, 54.528], [18.552, 54.530]
+        ]
+      }
+    },
+    {
+      "zone_id": "plszz_s3",
+      "terminal": "PLSZZ",
+      "city": "Swinoujscie",
+      "label": "S3 / DK93 → Port",
+      "priority": "high",
+      "roads_pl": ["S3", "DK93"],
+      "focus_pl": "Korytarz TIR z obwodnicy do kompleksu portowego",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [14.178, 53.896], [14.208, 53.902], [14.238, 53.908], [14.262, 53.912]
+        ]
+      }
+    },
+    {
+      "zone_id": "plszz_tunel",
+      "terminal": "PLSZZ",
+      "city": "Swinoujscie",
+      "label": "Tunel pod Świną",
+      "priority": "high",
+      "roads_pl": ["Tunel pod Świną"],
+      "focus_pl": "Przeprawa TIR między wyspami — wąskie gardło ruchu",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [14.248, 53.910], [14.256, 53.912], [14.264, 53.914]
+        ]
+      }
+    },
+    {
+      "zone_id": "plszz_wojska",
+      "terminal": "PLSZZ",
+      "city": "Swinoujscie",
+      "label": "ul. Wojska Polskiego → terminal",
+      "priority": "high",
+      "roads_pl": ["ul. Wojska Polskiego"],
+      "focus_pl": "Ostatni odcinek dojazdu TIR w Świnoujściu",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [14.244, 53.906], [14.250, 53.909], [14.256, 53.912], [14.260, 53.914]
+        ]
+      }
+    }
+  ]
+}
