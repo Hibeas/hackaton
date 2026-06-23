@@ -1,0 +1,725 @@
+import asyncio
+import hashlib
+import json
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import httpx
+import xmltodict
+from aiokafka import AIOKafkaProducer
+from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+GDYNIA_TRAFFIC_INTENSITIES_URL = "https://api.zdiz.gdynia.pl/ri/rest/traffic_intensities"
+GDYNIA_ROAD_SEGMENTS_URL = "https://api.zdiz.gdynia.pl/ri/rest/road_segments"
+SZCZECIN_VEHICLES_URL = "https://zditm.szczecin.pl/api/v1/vehicles"
+GDANSK_GPS_URL = "https://ckan2.multimediagdansk.pl/gpsPositions?v=2"
+
+REQUEST_TIMEOUT = 15.0
+CACHE_REFRESH_INTERVAL_SECONDS = 30.0
+GDYNIA_API_UPDATE_INTERVAL_SECONDS = 300.0
+KAFKA_BOOTSTRAP_SERVERS = "localhost:8081"
+KAFKA_TOPIC = "port-traffic-events"
+
+kafka_producer: AIOKafkaProducer | None = None
+cache_refresh_task: asyncio.Task[None] | None = None
+gdynia_watch_task: asyncio.Task[None] | None = None
+
+
+class TrafficCache:
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+        self.updated_at: datetime | None = None
+        self.gdynia_fingerprint: str | None = None
+        self.gdynia_timer_recalibrated_at: datetime | None = None
+        self.gdynia_changed_on_last_refresh: bool = False
+        self._lock = asyncio.Lock()
+        self._refresh_lock = asyncio.Lock()
+
+    def age_seconds(self) -> float | None:
+        if self.updated_at is None:
+            return None
+        return (datetime.now(timezone.utc) - self.updated_at).total_seconds()
+
+    async def refresh(self, *, is_startup: bool = False) -> bool:
+        """Refresh cache. Returns True when Gdynia API data changed."""
+        async with self._refresh_lock:
+            gdynia_raw = await fetch_gdynia_intensities_raw()
+            incoming_fingerprint = gdynia_fingerprint_from_raw(gdynia_raw)
+            gdynia_changed = (
+                not is_startup
+                and self.gdynia_fingerprint is not None
+                and incoming_fingerprint is not None
+                and incoming_fingerprint != self.gdynia_fingerprint
+            )
+
+            events = await collect_port_traffic()
+            if incoming_fingerprint is None:
+                incoming_fingerprint = gdynia_fingerprint_from_events(events)
+
+            async with self._lock:
+                self.events = events
+                self.updated_at = datetime.now(timezone.utc)
+
+            self.gdynia_changed_on_last_refresh = gdynia_changed
+            self.gdynia_fingerprint = incoming_fingerprint
+
+            if is_startup:
+                self.gdynia_timer_recalibrated_at = datetime.now(timezone.utc)
+                logger.info(
+                    "Initial cache refresh on startup (%s events, Gdynia timer calibrated)",
+                    len(events),
+                )
+            elif gdynia_changed:
+                self.gdynia_timer_recalibrated_at = datetime.now(timezone.utc)
+                logger.info(
+                    "Gdynia API data changed; cache refreshed and 5min timer recalibrated (%s events)",
+                    len(events),
+                )
+            else:
+                logger.info("Traffic cache refreshed (%s events), Gdynia data unchanged", len(events))
+
+            return gdynia_changed
+
+    async def get_snapshot(self) -> tuple[list[dict[str, Any]], datetime | None]:
+        async with self._lock:
+            return list(self.events), self.updated_at
+
+
+traffic_cache = TrafficCache()
+
+
+async def cache_refresh_loop() -> None:
+    while True:
+        await asyncio.sleep(CACHE_REFRESH_INTERVAL_SECONDS)
+        try:
+            await traffic_cache.refresh()
+        except Exception as exc:
+            logger.warning("Background cache refresh failed: %s", exc)
+
+
+async def gdynia_watch_loop() -> None:
+    """Poll Gdynia intensities and refresh immediately when API data changes."""
+    while True:
+        await asyncio.sleep(CACHE_REFRESH_INTERVAL_SECONDS)
+        try:
+            gdynia_raw = await fetch_gdynia_intensities_raw()
+            incoming_fingerprint = gdynia_fingerprint_from_raw(gdynia_raw)
+            if (
+                traffic_cache.gdynia_fingerprint is not None
+                and incoming_fingerprint is not None
+                and incoming_fingerprint != traffic_cache.gdynia_fingerprint
+            ):
+                await traffic_cache.refresh()
+        except Exception as exc:
+            logger.warning("Gdynia watch loop failed: %s", exc)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global kafka_producer, cache_refresh_task, gdynia_watch_task
+    producer = AIOKafkaProducer(
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        value_serializer=lambda value: json.dumps(value, ensure_ascii=False).encode("utf-8"),
+        key_serializer=lambda key: key.encode("utf-8") if key else None,
+    )
+    try:
+        await producer.start()
+        kafka_producer = producer
+        logger.info("Kafka producer connected to %s", KAFKA_BOOTSTRAP_SERVERS)
+    except Exception as exc:
+        kafka_producer = None
+        logger.warning("Kafka producer unavailable: %s", exc)
+
+    try:
+        await traffic_cache.refresh(is_startup=True)
+    except Exception as exc:
+        logger.warning("Initial cache refresh on startup failed: %s", exc)
+
+    cache_refresh_task = asyncio.create_task(cache_refresh_loop())
+    gdynia_watch_task = asyncio.create_task(gdynia_watch_loop())
+    try:
+        yield
+    finally:
+        for task_name, task in (
+            ("cache_refresh_task", cache_refresh_task),
+            ("gdynia_watch_task", gdynia_watch_task),
+        ):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        cache_refresh_task = None
+        gdynia_watch_task = None
+        if kafka_producer is not None:
+            await kafka_producer.stop()
+            kafka_producer = None
+
+
+app = FastAPI(title="Port Traffic API", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def ensure_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def to_iso_timestamp(raw: str | None) -> str:
+    if not raw:
+        return datetime.now(timezone.utc).isoformat()
+    normalized = raw.strip().replace("Z", "+00:00")
+    if " " in normalized and "T" not in normalized:
+        normalized = normalized.replace(" ", "T", 1)
+    try:
+        return datetime.fromisoformat(normalized).isoformat()
+    except ValueError:
+        return datetime.now(timezone.utc).isoformat()
+
+
+def traffic_status(speed_kmh: float) -> str:
+    if speed_kmh < 12:
+        return "CRITICAL"
+    if speed_kmh < 25:
+        return "CONGESTION"
+    return "CLEAR"
+
+
+def estimate_speed_from_intensity(intensity_vph: float) -> float:
+    """Heuristic speed estimate when only loop intensity is available."""
+    if intensity_vph <= 100:
+        return 50.0
+    if intensity_vph <= 400:
+        return 40.0
+    if intensity_vph <= 700:
+        return 32.0
+    if intensity_vph <= 1000:
+        return 24.0
+    if intensity_vph <= 1300:
+        return 16.0
+    return 8.0
+
+
+def segment_centroid(geometry: dict[str, Any]) -> tuple[float, float]:
+    coordinates = geometry.get("coordinates") or []
+    if not coordinates:
+        return 0.0, 0.0
+    lons = [float(point[0]) for point in coordinates]
+    lats = [float(point[1]) for point in coordinates]
+    return sum(lats) / len(lats), sum(lons) / len(lons)
+
+
+def parse_gdynia_payload(raw: str) -> Any:
+    """Parse Gdynia response as DATEX II XML (xmltodict) or JSON fallback."""
+    stripped = raw.strip()
+    if stripped.startswith("<"):
+        return xmltodict.parse(stripped)
+    return json.loads(stripped)
+
+
+def extract_datex_records(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Walk DATEX II xmltodict tree and collect measurement-like records."""
+    records: list[dict[str, Any]] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            keys = {k.lower() for k in node}
+            if {"intensity", "roadsegmentid"} <= keys or {"eventid", "roadsegmentid"} <= keys:
+                records.append(node)
+            elif "vehicleflow" in keys or "trafficflow" in keys:
+                records.append(node)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(data)
+    return records
+
+
+def normalize_gdynia_intensity_record(record: dict[str, Any]) -> dict[str, Any]:
+    event_id = record.get("eventId") or record.get("eventid") or record.get("@id")
+    segment_id = record.get("roadSegmentId") or record.get("roadsegmentid") or record.get("id")
+    intensity = record.get("intensity") or record.get("vehicleFlow") or record.get("vehicleflow")
+    measure_time = record.get("measureTime") or record.get("measuretime") or record.get("time")
+
+    if isinstance(intensity, dict):
+        intensity = intensity.get("#text") or intensity.get("value")
+
+    intensity_vph = float(intensity) if intensity is not None else 0.0
+    speed_kmh = estimate_speed_from_intensity(intensity_vph)
+    segment_key = str(segment_id) if segment_id is not None else "unknown"
+
+    return {
+        "event_id": f"gdynia_seg_{segment_key}",
+        "segment_id": segment_key,
+        "timestamp": to_iso_timestamp(str(measure_time) if measure_time else None),
+        "intensity_vph": intensity_vph,
+        "speed_kmh": speed_kmh,
+        "raw_event_id": str(event_id) if event_id is not None else segment_key,
+    }
+
+
+def parse_gdynia_intensities(raw: str | None) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    try:
+        payload = parse_gdynia_payload(raw)
+    except Exception as exc:
+        logger.warning("Failed to parse Gdynia intensities: %s", exc)
+        return []
+
+    if isinstance(payload, list):
+        records = payload
+    elif isinstance(payload, dict):
+        records = extract_datex_records(payload)
+        if not records:
+            for key in ("trafficIntensities", "intensities", "items", "data"):
+                if key in payload:
+                    records = ensure_list(payload[key])
+                    break
+    else:
+        return []
+
+    return [normalize_gdynia_intensity_record(item) for item in records if isinstance(item, dict)]
+
+
+def parse_gdynia_segments(raw: str | None) -> dict[str, dict[str, Any]]:
+    if not raw:
+        return {}
+    try:
+        payload = parse_gdynia_payload(raw)
+    except Exception as exc:
+        logger.warning("Failed to parse Gdynia road segments: %s", exc)
+        return {}
+
+    segments: list[dict[str, Any]] = []
+    if isinstance(payload, dict):
+        if "road_segments" in payload:
+            segments = ensure_list(payload["road_segments"])
+        else:
+            segments = extract_datex_records(payload)
+            if not segments:
+                for key in ("roadSegments", "segments", "items"):
+                    if key in payload:
+                        segments = ensure_list(payload[key])
+                        break
+    elif isinstance(payload, list):
+        segments = payload
+
+    segment_map: dict[str, dict[str, Any]] = {}
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        segment_id = segment.get("id") or segment.get("@id") or segment.get("roadSegmentId")
+        if segment_id is None:
+            continue
+        segment_map[str(segment_id)] = segment
+    return segment_map
+
+
+def normalize_segment_geometry(geometry: dict[str, Any]) -> dict[str, Any] | None:
+    raw_coordinates = geometry.get("coordinates") or []
+    coordinates: list[list[float]] = []
+    for point in raw_coordinates:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        try:
+            lon = float(point[0])
+            lat = float(point[1])
+        except (TypeError, ValueError):
+            continue
+        coordinates.append([lon, lat])
+    if len(coordinates) < 2:
+        return None
+    return {
+        "type": geometry.get("type") or "LineString",
+        "coordinates": coordinates,
+    }
+
+
+def build_gdynia_events(
+    intensities: list[dict[str, Any]],
+    segments: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for item in intensities:
+        segment = segments.get(item["segment_id"], {})
+        raw_geometry = segment.get("geometry") or {}
+        geometry = normalize_segment_geometry(raw_geometry)
+        lat, lon = segment_centroid(raw_geometry)
+        events.append(
+            {
+                "event_id": item["event_id"],
+                "record_kind": "road_segment",
+                "entity_id": item["segment_id"],
+                "city": "Gdynia",
+                "source_type": "induction_loop",
+                "timestamp": item["timestamp"],
+                "location": {
+                    "lat": lat,
+                    "lon": lon,
+                    "road_name": f"Segment {item['segment_id']}",
+                },
+                "geometry": geometry,
+                "metrics": {
+                    "speed_kmh": item["speed_kmh"],
+                    "intensity_vph": item["intensity_vph"],
+                    "is_bus_stop": False,
+                },
+                "status": traffic_status(item["speed_kmh"]),
+            }
+        )
+    return events
+
+
+def build_szczecin_events(raw: str | None) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        logger.warning("Failed to parse Szczecin vehicles: %s", exc)
+        return []
+
+    vehicles = payload.get("data") if isinstance(payload, dict) else payload
+    events: list[dict[str, Any]] = []
+    for vehicle in ensure_list(vehicles):
+        if not isinstance(vehicle, dict):
+            continue
+        vehicle_id = vehicle.get("vehicle_id") or vehicle.get("vehicle_number") or "unknown"
+        speed_kmh = float(vehicle.get("velocity") or 0)
+        next_stop = vehicle.get("next_stop")
+        previous_stop = vehicle.get("previous_stop")
+        is_bus_stop = speed_kmh == 0 or bool(vehicle.get("stuck"))
+        road_name = f"Line {vehicle.get('line_number', '?')} ({vehicle.get('direction', 'unknown')})"
+        if is_bus_stop and next_stop:
+            road_name = f"{road_name} @ {next_stop}"
+        elif previous_stop:
+            road_name = f"{road_name} near {previous_stop}"
+
+        line_number = vehicle.get("line_number")
+        direction = vehicle.get("direction")
+        events.append(
+            {
+                "event_id": f"szczecin_veh_{vehicle_id}",
+                "record_kind": "vehicle",
+                "entity_id": str(vehicle_id),
+                "city": "Szczecin",
+                "source_type": "public_transit_gps",
+                "timestamp": to_iso_timestamp(vehicle.get("updated_at")),
+                "location": {
+                    "lat": float(vehicle.get("latitude") or 0),
+                    "lon": float(vehicle.get("longitude") or 0),
+                    "road_name": road_name,
+                },
+                "geometry": None,
+                "metrics": {
+                    "speed_kmh": speed_kmh,
+                    "intensity_vph": None,
+                    "is_bus_stop": is_bus_stop,
+                    "line": str(line_number) if line_number is not None else None,
+                    "direction": str(direction) if direction is not None else None,
+                    "next_stop": str(next_stop) if next_stop else None,
+                    "previous_stop": str(previous_stop) if previous_stop else None,
+                },
+                "status": traffic_status(speed_kmh),
+            }
+        )
+    return events
+
+
+def build_gdansk_events(raw: str | None) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        logger.warning("Failed to parse Gdansk GPS: %s", exc)
+        return []
+
+    vehicles = payload.get("vehicles") if isinstance(payload, dict) else payload
+    events: list[dict[str, Any]] = []
+    for vehicle in ensure_list(vehicles):
+        if not isinstance(vehicle, dict):
+            continue
+        vehicle_id = vehicle.get("vehicleId") or vehicle.get("vehicleCode") or "unknown"
+        speed_kmh = float(vehicle.get("speed") or 0)
+        route = vehicle.get("routeShortName") or vehicle.get("routeId") or "?"
+        headsign = vehicle.get("headsign") or ""
+        is_bus_stop = speed_kmh == 0
+        road_name = f"Line {route}"
+        if headsign:
+            road_name = f"{road_name} -> {headsign}"
+
+        timestamp = vehicle.get("generated") or payload.get("lastUpdate")
+        events.append(
+            {
+                "event_id": f"gdansk_veh_{vehicle_id}",
+                "record_kind": "vehicle",
+                "entity_id": str(vehicle_id),
+                "city": "Gdansk",
+                "source_type": "public_transit_gps",
+                "timestamp": to_iso_timestamp(timestamp),
+                "location": {
+                    "lat": float(vehicle.get("lat") or 0),
+                    "lon": float(vehicle.get("lon") or 0),
+                    "road_name": road_name,
+                },
+                "geometry": None,
+                "metrics": {
+                    "speed_kmh": speed_kmh,
+                    "intensity_vph": None,
+                    "is_bus_stop": is_bus_stop,
+                    "line": str(route) if route is not None else None,
+                    "headsign": str(headsign) if headsign else None,
+                },
+                "status": traffic_status(speed_kmh),
+            }
+        )
+    return events
+
+
+async def fetch_text(client: httpx.AsyncClient, url: str, label: str) -> str | None:
+    try:
+        response = await client.get(url, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        return response.text
+    except httpx.TimeoutException:
+        logger.warning("%s API timeout after %.0fs", label, REQUEST_TIMEOUT)
+    except httpx.HTTPStatusError as exc:
+        logger.warning("%s API HTTP error: %s", label, exc.response.status_code)
+    except Exception as exc:
+        logger.warning("%s API request failed: %s", label, exc)
+    return None
+
+
+async def fetch_gdynia_intensities_raw() -> str | None:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        return await fetch_text(client, GDYNIA_TRAFFIC_INTENSITIES_URL, "Gdynia intensities")
+
+
+def gdynia_fingerprint_from_raw(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def gdynia_fingerprint_from_events(events: list[dict[str, Any]]) -> str | None:
+    gdynia_events = [event for event in events if event.get("city") == "Gdynia"]
+    if not gdynia_events:
+        return None
+    parts = sorted(
+        (
+            event.get("event_id"),
+            event.get("timestamp"),
+            event.get("metrics", {}).get("intensity_vph"),
+        )
+        for event in gdynia_events
+    )
+    payload = json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+async def collect_port_traffic() -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        (
+            gdynia_intensities_raw,
+            gdynia_segments_raw,
+            szczecin_raw,
+            gdansk_raw,
+        ) = await asyncio.gather(
+            fetch_text(client, GDYNIA_TRAFFIC_INTENSITIES_URL, "Gdynia intensities"),
+            fetch_text(client, GDYNIA_ROAD_SEGMENTS_URL, "Gdynia segments"),
+            fetch_text(client, SZCZECIN_VEHICLES_URL, "Szczecin"),
+            fetch_text(client, GDANSK_GPS_URL, "Gdansk"),
+        )
+
+    intensities = parse_gdynia_intensities(gdynia_intensities_raw)
+    segments = parse_gdynia_segments(gdynia_segments_raw)
+
+    unified: list[dict[str, Any]] = []
+    unified.extend(build_gdynia_events(intensities, segments))
+    unified.extend(build_szczecin_events(szczecin_raw))
+    unified.extend(build_gdansk_events(gdansk_raw))
+    return unified
+
+
+def parse_event_datetime(raw: str) -> datetime | None:
+    normalized = raw.strip().replace("Z", "+00:00")
+    if " " in normalized and "T" not in normalized:
+        normalized = normalized.replace(" ", "T", 1)
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def build_city_source_metadata(
+    events: list[dict[str, Any]],
+    city: str,
+    record_kind: str,
+) -> dict[str, Any]:
+    city_events = [event for event in events if event.get("city") == city]
+    timestamps: list[datetime] = []
+    for event in city_events:
+        timestamp = event.get("timestamp")
+        if not timestamp:
+            continue
+        parsed = parse_event_datetime(str(timestamp))
+        if parsed is not None:
+            timestamps.append(parsed)
+
+    return {
+        "record_kind": record_kind,
+        "event_count": len(city_events),
+        "last_timestamp": max(timestamps).isoformat() if timestamps else None,
+    }
+
+
+def build_gdynia_source_metadata(events: list[dict[str, Any]]) -> dict[str, Any]:
+    measure_times: list[datetime] = []
+    for event in events:
+        if event.get("city") != "Gdynia":
+            continue
+        timestamp = event.get("timestamp")
+        if not timestamp:
+            continue
+        parsed = parse_event_datetime(str(timestamp))
+        if parsed is not None:
+            measure_times.append(parsed)
+
+    now = datetime.now(timezone.utc)
+    if not measure_times:
+        return {
+            "record_kind": "road_segment",
+            "last_measure_at": None,
+            "next_update_at": None,
+            "seconds_until_update": None,
+            "update_interval_seconds": GDYNIA_API_UPDATE_INTERVAL_SECONDS,
+            "event_count": 0,
+            "last_timestamp": None,
+            "is_overdue": False,
+        }
+
+    last_measure_at = max(measure_times)
+    next_update_at = last_measure_at + timedelta(seconds=GDYNIA_API_UPDATE_INTERVAL_SECONDS)
+    seconds_until_update = max(0.0, (next_update_at - now).total_seconds())
+
+    return {
+        "record_kind": "road_segment",
+        "last_measure_at": last_measure_at.isoformat(),
+        "last_timestamp": last_measure_at.isoformat(),
+        "next_update_at": next_update_at.isoformat(),
+        "seconds_until_update": round(seconds_until_update),
+        "update_interval_seconds": GDYNIA_API_UPDATE_INTERVAL_SECONDS,
+        "event_count": len(measure_times),
+        "is_overdue": now >= next_update_at,
+    }
+
+
+def enrich_gdynia_metadata(events: list[dict[str, Any]]) -> dict[str, Any]:
+    metadata = build_gdynia_source_metadata(events)
+    metadata["data_fingerprint"] = traffic_cache.gdynia_fingerprint
+    metadata["data_changed"] = traffic_cache.gdynia_changed_on_last_refresh
+    metadata["timer_calibrated_at"] = (
+        traffic_cache.gdynia_timer_recalibrated_at.isoformat()
+        if traffic_cache.gdynia_timer_recalibrated_at
+        else None
+    )
+    return metadata
+
+
+async def publish_events_to_kafka(events: list[dict[str, Any]]) -> int:
+    if kafka_producer is None:
+        logger.warning("Skipping Kafka publish: producer is not connected")
+        return 0
+
+    published = 0
+    for event in events:
+        try:
+            await kafka_producer.send_and_wait(
+                KAFKA_TOPIC,
+                value=event,
+                key=event.get("event_id"),
+            )
+            published += 1
+        except Exception as exc:
+            logger.warning(
+                "Failed to publish event %s to Kafka: %s",
+                event.get("event_id"),
+                exc,
+            )
+    logger.info("Published %s/%s events to topic %s", published, len(events), KAFKA_TOPIC)
+    return published
+
+
+@app.get("/api/v1/port-traffic")
+async def get_port_traffic(
+    publish_kafka: bool = Query(default=True, description="Publish events to Kafka"),
+    use_cache: bool = Query(default=False, description="Return cached data instead of live fetch"),
+) -> list[dict[str, Any]] | dict[str, Any]:
+    if use_cache:
+        return await get_map_data()
+
+    events = await collect_port_traffic()
+    if publish_kafka:
+        await publish_events_to_kafka(events)
+    return events
+
+
+@app.get("/api/v1/map-data")
+async def get_map_data() -> dict[str, Any]:
+    events, updated_at = await traffic_cache.get_snapshot()
+    if not events:
+        await traffic_cache.refresh(is_startup=True)
+        events, updated_at = await traffic_cache.get_snapshot()
+
+    return {
+        "events": events,
+        "cached_at": updated_at.isoformat() if updated_at else None,
+        "age_seconds": traffic_cache.age_seconds(),
+        "refresh_interval_seconds": CACHE_REFRESH_INTERVAL_SECONDS,
+        "sources": {
+            "gdynia": enrich_gdynia_metadata(events),
+            "szczecin": build_city_source_metadata(events, "Szczecin", "vehicle"),
+            "gdansk": build_city_source_metadata(events, "Gdansk", "vehicle"),
+        },
+    }
+
+
+@app.get("/")
+async def map_page() -> FileResponse:
+    return FileResponse("map.html")
+
+
+@app.get("/map")
+async def map_page_alias() -> FileResponse:
+    return FileResponse("map.html")
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
