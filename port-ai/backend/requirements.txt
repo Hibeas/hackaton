@@ -6,3 +6,5 @@ aiokafka
 pandas
 openpyxl
 numpy
+psycopg2-binary
+python-dotenv

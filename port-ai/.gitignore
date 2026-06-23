@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 
+# Secrets
+backend/.env
+
 # Runtime SQLite time-series store (regenerated on backend start)
 backend/corridor_observations.db
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CircleMarker,
   GeoJSON,
@@ -17,17 +17,20 @@ import {
   MAP_DEFAULT_ZOOM,
   TRAFFIC_STATUS_COLORS,
 } from '../constants/traffic'
-import type { MapDataLayer, TrafficEvent, TrafficStatus } from '../types/traffic'
+import type { HeatmapPoint, MapDataLayer, TrafficEvent, TrafficStatus } from '../types/traffic'
 import {
   buildContextSegmentGeoJson,
   buildIncidentGeoJson,
   splitContextEvents,
   splitPrimaryEvents,
 } from '../utils/trafficFormat'
+import { TomTomHeatmapLayer } from './TomTomHeatmapLayer'
 
 interface TrafficMapProps {
   primary: MapDataLayer
   context: MapDataLayer
+  heatmapPoints?: HeatmapPoint[]
+  flowTileUrl?: string
   focusBbox?: CorridorBbox | null
   focusPolygon?: LatLng[] | null
 }
@@ -103,6 +106,43 @@ function MapViewControls() {
       </button>
       <button type="button" onClick={() => map.setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM)}>
         {t('map.zoomRegion')}
+      </button>
+    </div>
+  )
+}
+
+function HeatmapControls({
+  showFlowTiles,
+  showIncidentHeat,
+  onToggleFlowTiles,
+  onToggleIncidentHeat,
+  pointCount,
+}: {
+  showFlowTiles: boolean
+  showIncidentHeat: boolean
+  onToggleFlowTiles: () => void
+  onToggleIncidentHeat: () => void
+  pointCount: number
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="heatmap-controls">
+      <button
+        type="button"
+        className={showFlowTiles ? 'heatmap-controls__btn heatmap-controls__btn--active' : 'heatmap-controls__btn'}
+        onClick={onToggleFlowTiles}
+      >
+        {t('map.heatmapFlowTiles')}
+      </button>
+      <button
+        type="button"
+        className={
+          showIncidentHeat ? 'heatmap-controls__btn heatmap-controls__btn--active' : 'heatmap-controls__btn'
+        }
+        onClick={onToggleIncidentHeat}
+      >
+        {t('map.heatmapIncidents', { count: pointCount })}
       </button>
     </div>
   )
@@ -272,7 +312,17 @@ function ContextVehicleMarkers({ vehicles }: { vehicles: TrafficEvent[] }) {
   )
 }
 
-export function TrafficMap({ primary, context, focusBbox, focusPolygon }: TrafficMapProps) {
+export function TrafficMap({
+  primary,
+  context,
+  heatmapPoints = [],
+  flowTileUrl = '/api/v1/tomtom/tiles/flow/relative0/{z}/{x}/{y}.png',
+  focusBbox,
+  focusPolygon,
+}: TrafficMapProps) {
+  const [showFlowTiles, setShowFlowTiles] = useState(true)
+  const [showIncidentHeat, setShowIncidentHeat] = useState(true)
+
   const { segments, vehicles } = useMemo(
     () => splitContextEvents(context.events),
     [context.events],
@@ -290,6 +340,16 @@ export function TrafficMap({ primary, context, focusBbox, focusPolygon }: Traffi
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        {showFlowTiles ? (
+          <TileLayer
+            url={flowTileUrl}
+            opacity={0.62}
+            zIndex={450}
+            maxNativeZoom={18}
+            maxZoom={22}
+          />
+        ) : null}
+        <TomTomHeatmapLayer points={heatmapPoints} enabled={showIncidentHeat} />
         <ContextSegmentLayer segments={segments} />
         <ContextVehicleMarkers vehicles={vehicles} />
         <IncidentLayer incidents={primary.events} />
@@ -297,6 +357,13 @@ export function TrafficMap({ primary, context, focusBbox, focusPolygon }: Traffi
         <FlyToBbox bbox={focusBbox} />
         <MapViewControls />
       </MapContainer>
+      <HeatmapControls
+        showFlowTiles={showFlowTiles}
+        showIncidentHeat={showIncidentHeat}
+        onToggleFlowTiles={() => setShowFlowTiles((value) => !value)}
+        onToggleIncidentHeat={() => setShowIncidentHeat((value) => !value)}
+        pointCount={heatmapPoints.length}
+      />
     </div>
   )
 }

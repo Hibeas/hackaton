@@ -2,9 +2,14 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 import httpx
 import xmltodict
@@ -12,7 +17,7 @@ from aiokafka import AIOKafkaProducer
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from anomaly_engine import AnomalyEngine
 from corridor_service import (
@@ -26,7 +31,7 @@ from corridor_service import (
 )
 from observation_store import ObservationStore
 from port_demand import analyze_cities, load_baseline
-from tomtom_service import collect_tomtom_events
+from tomtom_service import TOMTOM_API_KEY, build_heatmap_points, collect_tomtom_events
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,8 +44,13 @@ GDANSK_GPS_URL = "https://ckan2.multimediagdansk.pl/gpsPositions?v=2"
 REQUEST_TIMEOUT = 15.0
 CACHE_REFRESH_INTERVAL_SECONDS = 30.0
 GDYNIA_API_UPDATE_INTERVAL_SECONDS = 300.0
-KAFKA_BOOTSTRAP_SERVERS = "localhost:8081"
-KAFKA_TOPIC = "port-traffic-events"
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:8081")
+KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "port-traffic-events")
+KAFKA_PUBLISH_ON_REFRESH = os.environ.get("KAFKA_PUBLISH_ON_REFRESH", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 kafka_producer: AIOKafkaProducer | None = None
 cache_refresh_task: asyncio.Task[None] | None = None
@@ -94,6 +104,9 @@ class TrafficCache:
             )
             observation_store.append_batch(snapshots)
             engine_events = anomaly_engine.evaluate(snapshots)
+
+            if KAFKA_PUBLISH_ON_REFRESH:
+                await publish_events_to_kafka(primary_events + context_events)
 
             async with self._lock:
                 self.primary_events = primary_events
@@ -768,6 +781,11 @@ async def get_map_data() -> dict[str, Any]:
             "source": "ztm",
             "events": context,
         },
+        "heatmap": {
+            "source": "tomtom",
+            "points": build_heatmap_points(primary),
+            "flow_tile_url": "/api/v1/tomtom/tiles/flow/relative0/{z}/{x}/{y}.png",
+        },
         "events": primary,
         "cached_at": updated_at.isoformat() if updated_at else None,
         "age_seconds": traffic_cache.age_seconds(),
@@ -782,6 +800,35 @@ async def get_map_data() -> dict[str, Any]:
             "gdansk": build_city_source_metadata(context, "Gdansk", "vehicle"),
         },
     }
+
+
+ALLOWED_FLOW_TILE_STYLES = frozenset({"relative0", "relative", "absolute", "relative-delay0"})
+
+
+@app.get("/api/v1/tomtom/tiles/flow/{style}/{z}/{x}/{y}.png")
+async def get_tomtom_flow_tile(style: str, z: int, x: int, y: int) -> Response:
+    """Proxy TomTom Traffic Flow raster tiles (live road congestion overlay)."""
+    if style not in ALLOWED_FLOW_TILE_STYLES:
+        raise HTTPException(status_code=400, detail="Unsupported flow tile style")
+
+    url = f"https://api.tomtom.com/traffic/map/4/tile/flow/{style}/{z}/{x}/{y}.png"
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+                params={"key": TOMTOM_API_KEY},
+                timeout=REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail="TomTom flow tile unavailable",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="TomTom flow tile fetch failed") from exc
+
+    return Response(content=response.content, media_type="image/png")
 
 
 @app.get("/api/v1/engine/events")
@@ -962,5 +1009,15 @@ async def map_page_alias() -> FileResponse:
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "database": observation_store.backend_name,
+        "observation_count": observation_store.corridor_count(),
+        "kafka": {
+            "connected": kafka_producer is not None,
+            "bootstrap": KAFKA_BOOTSTRAP_SERVERS,
+            "topic": KAFKA_TOPIC,
+            "publish_on_refresh": KAFKA_PUBLISH_ON_REFRESH,
+        },
+    }

@@ -58,9 +58,22 @@ export interface MapDataLayer {
   incident_count?: number
 }
 
+export interface HeatmapPoint {
+  lat: number
+  lon: number
+  intensity: number
+}
+
+export interface TomTomHeatmapLayer {
+  source: string
+  points: HeatmapPoint[]
+  flow_tile_url: string
+}
+
 export interface MapDataResponse {
   primary: MapDataLayer
   context: MapDataLayer
+  heatmap?: TomTomHeatmapLayer
   events: TrafficEvent[]
   cached_at: string | null
   age_seconds: number | null

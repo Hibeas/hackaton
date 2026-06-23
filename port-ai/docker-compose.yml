@@ -1,0 +1,22 @@
+services:
+  kafka:
+    image: redpandadata/redpanda:v24.2.4
+    container_name: port-ai-kafka
+    command:
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --reserve-memory
+      - 0M
+      - --overprovisioned
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:8081
+      - --advertise-kafka-addr
+      - PLAINTEXT://127.0.0.1:8081
+    ports:
+      - "8081:8081"

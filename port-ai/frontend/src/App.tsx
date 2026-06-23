@@ -68,6 +68,8 @@ function DashboardView() {
             <TrafficMap
               primary={mapData.primary}
               context={mapData.context}
+              heatmapPoints={mapData.heatmap?.points ?? []}
+              flowTileUrl={mapData.heatmap?.flow_tile_url}
               focusBbox={focusGeometry.bbox}
               focusPolygon={focusGeometry.polygon}
             />

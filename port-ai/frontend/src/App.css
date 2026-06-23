@@ -25,6 +25,10 @@
   height: 100%;
 }
 
+.map-shell {
+  position: relative;
+}
+
 .map-placeholder {
   background: linear-gradient(135deg, #1a2332 0%, #0f1419 100%);
 }
@@ -48,6 +52,38 @@
 
 .map-controls button:hover {
   background: var(--color-surface);
+}
+
+.heatmap-controls {
+  position: absolute;
+  bottom: var(--spacing-md);
+  left: var(--spacing-md);
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  max-width: calc(100% - 2 * var(--spacing-md));
+}
+
+.heatmap-controls__btn {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgba(26, 35, 50, 0.92);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.heatmap-controls__btn:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.heatmap-controls__btn--active {
+  border-color: #f97316;
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.35);
 }
 
 .language-switcher {

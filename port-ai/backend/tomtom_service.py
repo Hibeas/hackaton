@@ -16,10 +16,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-TOMTOM_API_KEY = os.environ.get(
-    "TOMTOM_API_KEY",
-    "Eeuz6XPvDckP0avEfM50keYMPdgsWmNG",
-)
+_default_tomtom_key = "Eeuz6XPvDckP0avEfM50keYMPdgsWmNG"
+TOMTOM_API_KEY = (os.environ.get("TOMTOM_API_KEY") or "").strip() or _default_tomtom_key
 TOMTOM_INCIDENTS_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 REQUEST_TIMEOUT = 30.0
 
@@ -211,3 +209,69 @@ async def collect_tomtom_events() -> list[dict[str, Any]]:
 
     logger.info("TomTom primary: %s present incidents", len(unified))
     return unified
+
+
+def incident_heat_intensity(event: dict[str, Any]) -> float:
+    """Map TomTom delay + magnitude to 0.15–1.0 heat weight."""
+    metrics = event.get("metrics") or {}
+    delay = int(metrics.get("delay_sec") or 0)
+    magnitude = int(metrics.get("magnitude") or 0)
+    status = event.get("status") or ""
+
+    delay_factor = min(1.0, delay / 600.0)
+    magnitude_factor = min(1.0, magnitude / 4.0)
+    intensity = 0.55 * delay_factor + 0.35 * magnitude_factor
+    if status == "CRITICAL":
+        intensity = min(1.0, intensity + 0.15)
+    return max(0.15, round(intensity, 3))
+
+
+def _sample_line_heatmap_points(
+    coordinates: list[list[float]],
+    intensity: float,
+    step: int = 2,
+) -> list[dict[str, Any]]:
+    points: list[dict[str, Any]] = []
+    for index in range(0, len(coordinates), step):
+        lon, lat = coordinates[index]
+        points.append({"lat": float(lat), "lon": float(lon), "intensity": intensity})
+    return points
+
+
+def build_heatmap_points(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Convert TomTom incidents into weighted lat/lon points for a live heatmap layer.
+    Line incidents are sampled along geometry; point incidents use centroid.
+    """
+    points: list[dict[str, Any]] = []
+    seen: set[tuple[float, float]] = set()
+
+    for event in events:
+        if event.get("source_type") != "tomtom_traffic":
+            continue
+
+        intensity = incident_heat_intensity(event)
+        geometry = event.get("geometry") or {}
+
+        if geometry.get("type") == "LineString":
+            coords = geometry.get("coordinates") or []
+            for point in _sample_line_heatmap_points(coords, intensity):
+                key = (round(point["lat"], 4), round(point["lon"], 4))
+                if key in seen:
+                    continue
+                seen.add(key)
+                points.append(point)
+            continue
+
+        location = event.get("location") or {}
+        lat = location.get("lat")
+        lon = location.get("lon")
+        if lat is None or lon is None:
+            continue
+        key = (round(float(lat), 4), round(float(lon), 4))
+        if key in seen:
+            continue
+        seen.add(key)
+        points.append({"lat": float(lat), "lon": float(lon), "intensity": intensity})
+
+    return points

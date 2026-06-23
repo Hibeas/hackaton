@@ -113,7 +113,9 @@
     "contextVehiclePopup": "<strong>{{road}}</strong> <em>(ZTM)</em><br/>Status: {{status}}<br/>Prędkość: {{speed}} km/h",
     "intensityUnknown": "brak",
     "zoomGdynia": "Gdynia",
-    "zoomRegion": "Cały region"
+    "zoomRegion": "Cały region",
+    "heatmapFlowTiles": "TomTom Flow (live)",
+    "heatmapIncidents": "Heatmapa incydentów ({{count}})"
   },
   "language": {
     "label": "Język",
