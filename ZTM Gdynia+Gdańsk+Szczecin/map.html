@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Żywy Układ Nerwowy Portu - Mapa</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        .legend {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            line-height: 1.5;
+        }
+        .legend i {
+            width: 12px;
+            height: 12px;
+            float: left;
+            margin-top: 4px;
+            margin-right: 8px;
+            border-radius: 50%;
+        }
+        .legend i.line-sample {
+            width: 20px;
+            height: 4px;
+            border-radius: 2px;
+            margin-top: 6px;
+        }
+        #loading {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 8px;
+            z-index: 1000;
+            display: none;
+        }
+        #loading.updating {
+            background: rgba(0, 0, 0, 0.55);
+            font-size: 13px;
+            padding: 6px 14px;
+        }
+        #status-bar {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(255, 255, 255, 0.92);
+            padding: 8px 12px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+            font-size: 13px;
+            z-index: 1000;
+            max-width: calc(100vw - 24px);
+        }
+        #view-controls {
+            position: fixed;
+            bottom: 12px;
+            right: 12px;
+            display: flex;
+            gap: 6px;
+            z-index: 1000;
+        }
+        #view-controls button {
+            border: none;
+            background: rgba(255, 255, 255, 0.92);
+            color: #333;
+            padding: 8px 12px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            font-size: 12px;
+        }
+        #view-controls button:hover {
+            background: #f5f5f5;
+        }
+        #update-toast {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: #1b5e20;
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            font-size: 14px;
+            z-index: 1100;
+            opacity: 0;
+            transform: translateY(-12px);
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+        #update-toast.visible {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+        #notify-banner {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.96);
+            color: #333;
+            padding: 10px 14px;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            font-size: 13px;
+            z-index: 1050;
+            display: none;
+            gap: 10px;
+            align-items: center;
+        }
+        #notify-banner button {
+            border: none;
+            background: #1565c0;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        #notify-banner button.secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Ładowanie danych o ruchu…</div>
+    <div id="notify-banner">
+        <span>Włączyć powiadomienia o aktualizacji mapy co 30 s?</span>
+        <button type="button" id="notify-enable">Włącz</button>
+        <button type="button" class="secondary" id="notify-dismiss">Nie teraz</button>
+    </div>
+    <div id="update-toast" role="status" aria-live="polite"></div>
+    <div id="status-bar">Oczekiwanie na pierwsze pobranie…</div>
+    <div id="view-controls">
+        <button type="button" id="zoom-gdynia">Gdynia (odcinki)</button>
+        <button type="button" id="zoom-region">Cały region</button>
+    </div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_URL = "/api/v1/map-data";
+        const REFRESH_MS = 30000;
+
+        const map = L.map("map").setView([54.52, 18.53], 13);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: "© OpenStreetMap contributors",
+        }).addTo(map);
+
+        const segmentsLayer = L.layerGroup().addTo(map);
+        const vehiclesLayer = L.layerGroup().addTo(map);
+        let segmentsGeoJsonLayer = null;
+        L.control.layers(
+            null,
+            {
+                "Odcinki dróg (Gdynia)": segmentsLayer,
+                "Autobusy (Gdańsk, Szczecin)": vehiclesLayer,
+            },
+            { collapsed: false, position: "topleft" },
+        ).addTo(map);
+        const loadingEl = document.getElementById("loading");
+        const statusBarEl = document.getElementById("status-bar");
+        const updateToastEl = document.getElementById("update-toast");
+        const notifyBannerEl = document.getElementById("notify-banner");
+
+        let refreshTimer = null;
+        let countdownTimer = null;
+        let toastTimer = null;
+        let nextRefreshAt = null;
+        let isFetching = false;
+        let hasLoadedOnce = false;
+        let notificationsEnabled = false;
+
+        const TOAST_VISIBLE_MS = 5000;
+        const NOTIFY_BANNER_KEY = "port-map-notify-prompt";
+
+        function formatCountdown(ms) {
+            const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            if (minutes > 0) {
+                return `${minutes} min ${seconds} s`;
+            }
+            return `${seconds} s`;
+        }
+
+        function updateCountdownStatus(baseText) {
+            if (!nextRefreshAt) {
+                statusBarEl.textContent = baseText;
+                return;
+            }
+            const remaining = nextRefreshAt - Date.now();
+            statusBarEl.textContent = `${baseText} | Następna aktualizacja za: ${formatCountdown(remaining)}`;
+        }
+
+        function startCountdown(baseText) {
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+            }
+            nextRefreshAt = Date.now() + REFRESH_MS;
+            updateCountdownStatus(baseText);
+            countdownTimer = setInterval(() => {
+                updateCountdownStatus(baseText);
+            }, 1000);
+        }
+
+        function showUpdateToast(message) {
+            updateToastEl.textContent = message;
+            updateToastEl.classList.add("visible");
+            if (toastTimer) {
+                clearTimeout(toastTimer);
+            }
+            toastTimer = setTimeout(() => {
+                updateToastEl.classList.remove("visible");
+            }, TOAST_VISIBLE_MS);
+        }
+
+        function showSystemNotification(title, body) {
+            if (!notificationsEnabled || !("Notification" in window)) {
+                return;
+            }
+            if (Notification.permission !== "granted") {
+                return;
+            }
+            try {
+                new Notification(title, {
+                    body,
+                    tag: "port-map-update",
+                    renotify: true,
+                });
+            } catch (error) {
+                console.warn("Nie udało się wyświetlić powiadomienia systemowego:", error);
+            }
+        }
+
+        function notifyMapUpdated(drawn, age, now) {
+            const message = `Mapa zaktualizowana · ${now} · ${drawn} punktów · wiek danych ${age} s`;
+            showUpdateToast(message);
+            showSystemNotification(
+                "Mapa ruchu portowego",
+                `Zaktualizowano ${drawn} punktów. Wiek danych: ${age} s.`,
+            );
+        }
+
+        function maybePromptForNotifications() {
+            if (!("Notification" in window)) {
+                return;
+            }
+            if (Notification.permission !== "default") {
+                return;
+            }
+            if (localStorage.getItem(NOTIFY_BANNER_KEY) === "dismissed") {
+                return;
+            }
+            notifyBannerEl.style.display = "flex";
+        }
+
+        async function enableNotifications() {
+            if (!("Notification" in window)) {
+                return;
+            }
+            const permission = await Notification.requestPermission();
+            notificationsEnabled = permission === "granted";
+            notifyBannerEl.style.display = "none";
+            localStorage.setItem(NOTIFY_BANNER_KEY, "answered");
+            if (notificationsEnabled) {
+                showUpdateToast("Powiadomienia systemowe włączone");
+            }
+        }
+
+        document.getElementById("notify-enable").addEventListener("click", enableNotifications);
+        document.getElementById("notify-dismiss").addEventListener("click", () => {
+            notifyBannerEl.style.display = "none";
+            localStorage.setItem(NOTIFY_BANNER_KEY, "dismissed");
+        });
+
+        if ("Notification" in window && Notification.permission === "granted") {
+            notificationsEnabled = true;
+        }
+
+        const statusColors = {
+            CRITICAL: "#ff4444",
+            CONGESTION: "#ffbb33",
+            CLEAR: "#00C851",
+        };
+
+        function isValidLocation(lat, lon) {
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+            if (lat === 0 && lon === 0) return false;
+            return lat >= 53 && lat <= 55.5 && lon >= 13 && lon <= 20;
+        }
+
+        function formatIntensity(value) {
+            return value === null || value === undefined ? "brak danych" : `${value} poj./h`;
+        }
+
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString("pl-PL");
+        }
+
+        function getRecordKind(event) {
+            return event.record_kind
+                || (event.source_type === "induction_loop" ? "road_segment" : "vehicle");
+        }
+
+        function segmentLineWeight() {
+            return Math.min(18, Math.max(8, map.getZoom()));
+        }
+
+        function normalizeGeometry(geometry) {
+            if (!geometry?.coordinates || geometry.coordinates.length < 2) {
+                return null;
+            }
+            const coordinates = geometry.coordinates
+                .map((point) => {
+                    const lon = Number(point[0]);
+                    const lat = Number(point[1]);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                        return null;
+                    }
+                    if (!isValidLocation(lat, lon)) {
+                        return null;
+                    }
+                    return [lon, lat];
+                })
+                .filter(Boolean);
+            if (coordinates.length < 2) {
+                return null;
+            }
+            return {
+                type: "LineString",
+                coordinates,
+            };
+        }
+
+        function segmentStyle(feature) {
+            const status = feature.properties.status;
+            const color = statusColors[status] || statusColors.CLEAR;
+            const weight = segmentLineWeight();
+            return {
+                color,
+                weight,
+                opacity: 0.92,
+                lineCap: "round",
+                lineJoin: "round",
+            };
+        }
+
+        function refreshSegmentStyles() {
+            if (!segmentsGeoJsonLayer) {
+                return;
+            }
+            segmentsGeoJsonLayer.setStyle(segmentStyle);
+        }
+
+        function fitMapToLayer(layer, maxZoom = 14) {
+            if (!layer || layer.getLayers().length === 0) {
+                return;
+            }
+            const bounds = layer.getBounds();
+            if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [30, 30], maxZoom });
+            }
+        }
+
+        function zoomToGdyniaSegments() {
+            if (segmentsGeoJsonLayer && segmentsGeoJsonLayer.getLayers().length > 0) {
+                fitMapToLayer(segmentsGeoJsonLayer, 15);
+                return;
+            }
+            fitMapToLayer(segmentsLayer, 15);
+        }
+
+        function zoomToRegion() {
+            const group = L.featureGroup([segmentsLayer, vehiclesLayer]);
+            if (group.getLayers().length > 0) {
+                fitMapToLayer(group, 10);
+                return;
+            }
+            map.setView([54.4, 18.5], 9);
+        }
+
+        map.on("zoomend", refreshSegmentStyles);
+
+        document.getElementById("zoom-gdynia").addEventListener("click", zoomToGdyniaSegments);
+        document.getElementById("zoom-region").addEventListener("click", zoomToRegion);
+
+        function buildSegmentPopup(event) {
+            const intensity = formatIntensity(event.metrics.intensity_vph);
+            return `
+                <strong>Typ:</strong> Odcinek drogi<br>
+                <strong>Miasto:</strong> ${event.city}<br>
+                <strong>Segment:</strong> ${event.entity_id || "?"}<br>
+                <strong>Źródło:</strong> ${event.source_type}<br>
+                <strong>Natężenie:</strong> ${intensity}<br>
+                <strong>Prędkość (szac.):</strong> ${event.metrics.speed_kmh} km/h<br>
+                <strong>Status:</strong> ${event.status}<br>
+                <hr style="margin: 5px 0;">
+                <small>Aktualizacja: ${formatTimestamp(event.timestamp)}</small>
+            `;
+        }
+
+        function buildVehiclePopup(event) {
+            const metrics = event.metrics || {};
+            const busStop = metrics.is_bus_stop ? "tak" : "nie";
+            const line = metrics.line || "?";
+            const direction = metrics.direction || metrics.headsign || "brak danych";
+            return `
+                <strong>Typ:</strong> Autobus<br>
+                <strong>Miasto:</strong> ${event.city}<br>
+                <strong>Pojazd:</strong> ${event.entity_id || "?"}<br>
+                <strong>Linia:</strong> ${line}<br>
+                <strong>Kierunek:</strong> ${direction}<br>
+                <strong>Prędkość:</strong> ${metrics.speed_kmh} km/h<br>
+                <strong>Status:</strong> ${event.status}<br>
+                <strong>Postój / przystanek:</strong> ${busStop}<br>
+                <hr style="margin: 5px 0;">
+                <small>Aktualizacja: ${formatTimestamp(event.timestamp)}</small>
+            `;
+        }
+
+        function buildPopup(event) {
+            if (getRecordKind(event) === "road_segment") {
+                return buildSegmentPopup(event);
+            }
+            return buildVehiclePopup(event);
+        }
+
+        function drawSegmentsBatch(segmentEvents) {
+            if (segmentsGeoJsonLayer) {
+                segmentsLayer.removeLayer(segmentsGeoJsonLayer);
+                segmentsGeoJsonLayer = null;
+            }
+
+            const features = segmentEvents
+                .map((event) => {
+                    const geometry = normalizeGeometry(event.geometry);
+                    if (!geometry) {
+                        return null;
+                    }
+                    return {
+                        type: "Feature",
+                        geometry,
+                        properties: {
+                            event,
+                            status: event.status || "CLEAR",
+                        },
+                    };
+                })
+                .filter(Boolean);
+
+            if (features.length === 0) {
+                return 0;
+            }
+
+            segmentsGeoJsonLayer = L.geoJSON(
+                { type: "FeatureCollection", features },
+                {
+                    style: segmentStyle,
+                    onEachFeature: (feature, layer) => {
+                        layer.bindPopup(buildPopup(feature.properties.event));
+                    },
+                },
+            );
+            segmentsLayer.addLayer(segmentsGeoJsonLayer);
+            return features.length;
+        }
+
+        function drawRoadSegmentFallback(event, status) {
+            const lat = event.location?.lat;
+            const lon = event.location?.lon;
+            if (!isValidLocation(lat, lon)) {
+                return false;
+            }
+
+            const color = statusColors[status] || statusColors.CLEAR;
+            const marker = L.circleMarker([lat, lon], {
+                radius: 5,
+                fillColor: color,
+                color: "#333",
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.9,
+            });
+            marker.bindPopup(buildPopup(event));
+            segmentsLayer.addLayer(marker);
+            return true;
+        }
+
+        function drawVehicle(event, status) {
+            const lat = event.location?.lat;
+            const lon = event.location?.lon;
+            if (!isValidLocation(lat, lon)) {
+                return false;
+            }
+
+            const color = statusColors[status] || statusColors.CLEAR;
+            const marker = L.circleMarker([lat, lon], {
+                radius: 6,
+                fillColor: color,
+                color: "#000",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8,
+            });
+            marker.bindPopup(buildPopup(event));
+            vehiclesLayer.addLayer(marker);
+            return true;
+        }
+
+        async function fetchAndDrawTraffic({ background = false } = {}) {
+            if (isFetching) return;
+            isFetching = true;
+
+            if (!background || !hasLoadedOnce) {
+                loadingEl.textContent = "Ładowanie danych o ruchu…";
+                loadingEl.classList.remove("updating");
+                loadingEl.style.display = "block";
+            } else {
+                loadingEl.textContent = "Aktualizuję mapę…";
+                loadingEl.classList.add("updating");
+                loadingEl.style.display = "block";
+            }
+
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const payload = await response.json();
+                const data = payload.events || [];
+                segmentsLayer.clearLayers();
+                vehiclesLayer.clearLayers();
+                segmentsGeoJsonLayer = null;
+
+                let drawn = 0;
+                let skipped = 0;
+                let segmentsDrawn = 0;
+                let vehiclesDrawn = 0;
+
+                const segmentEvents = [];
+                const vehicleEvents = [];
+
+                data.forEach((event) => {
+                    if (getRecordKind(event) === "road_segment") {
+                        segmentEvents.push(event);
+                    } else {
+                        vehicleEvents.push(event);
+                    }
+                });
+
+                segmentsDrawn = drawSegmentsBatch(segmentEvents);
+                drawn += segmentsDrawn;
+
+                segmentEvents.forEach((event) => {
+                    if (normalizeGeometry(event.geometry)) {
+                        return;
+                    }
+                    const status = event.status || "CLEAR";
+                    if (drawRoadSegmentFallback(event, status)) {
+                        segmentsDrawn += 1;
+                        drawn += 1;
+                    } else {
+                        skipped += 1;
+                    }
+                });
+
+                vehicleEvents.forEach((event) => {
+                    const status = event.status || "CLEAR";
+                    if (drawVehicle(event, status)) {
+                        vehiclesDrawn += 1;
+                        drawn += 1;
+                    } else {
+                        skipped += 1;
+                    }
+                });
+
+                if (!hasLoadedOnce && segmentsDrawn > 0) {
+                    zoomToGdyniaSegments();
+                }
+
+                const now = new Date().toLocaleTimeString("pl-PL");
+                const age = payload.age_seconds != null
+                    ? Math.round(payload.age_seconds)
+                    : "?";
+                const baseStatus =
+                    `Odcinki: ${segmentsDrawn} | Autobusy: ${vehiclesDrawn} | Pominięte: ${skipped} | Wiek danych: ${age} s | Widok: ${now}`;
+                startCountdown(baseStatus);
+                console.log(`Zaktualizowano dane o ruchu: ${now} (${drawn} punktów, wiek ${age}s)`);
+
+                if (background && hasLoadedOnce) {
+                    notifyMapUpdated(drawn, age, now);
+                }
+
+                if (!hasLoadedOnce) {
+                    hasLoadedOnce = true;
+                    maybePromptForNotifications();
+                }
+            } catch (error) {
+                console.error("Błąd podczas pobierania danych z API:", error);
+                statusBarEl.textContent =
+                    "Błąd pobierania danych — sprawdź, czy działa uvicorn main:app --reload";
+            } finally {
+                isFetching = false;
+                loadingEl.style.display = "none";
+                scheduleNextRefresh();
+            }
+        }
+
+        function scheduleNextRefresh() {
+            if (refreshTimer) {
+                clearTimeout(refreshTimer);
+            }
+            refreshTimer = setTimeout(
+                () => fetchAndDrawTraffic({ background: true }),
+                REFRESH_MS,
+            );
+        }
+
+        const legend = L.control({ position: "topright" });
+        legend.onAdd = function () {
+            const div = L.DomUtil.create("div", "legend");
+            div.innerHTML += "<strong>Typ danych</strong><br>";
+            div.innerHTML += '<i class="line-sample" style="background: #666;"></i> Odcinek drogi (Gdynia)<br>';
+            div.innerHTML += '<i style="background: #666;"></i> Autobus (Gdańsk, Szczecin)<br>';
+            div.innerHTML += "<br><strong>Stan ruchu</strong><br>";
+            div.innerHTML += `<i style="background: ${statusColors.CLEAR}"></i> Płynny (≥ 25 km/h)<br>`;
+            div.innerHTML += `<i style="background: ${statusColors.CONGESTION}"></i> Zagęszczenie (12–25 km/h)<br>`;
+            div.innerHTML += `<i style="background: ${statusColors.CRITICAL}"></i> Korek (< 12 km/h)<br>`;
+            return div;
+        };
+        legend.addTo(map);
+
+        fetchAndDrawTraffic({ background: false });
+    </script>
+</body>
+</html>
