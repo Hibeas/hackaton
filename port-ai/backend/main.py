@@ -38,7 +38,7 @@ from port_events import (
     build_port_summary,
     build_terminals_catalog,
 )
-from demo_baltic_spike_service import run_baltic_hub_spike_demo
+from demo_baltic_spike_service import run_baltic_hub_spike_demo, run_corridor_spike_demo
 from hybrid_delay_forecaster import DEFAULT_HORIZONS, build_forecast_response
 from kafka_prediction_buffer import kafka_consumer_loop, kafka_prediction_buffer
 from tomtom_service import TOMTOM_API_KEY, build_heatmap_points, collect_tomtom_events
@@ -1332,6 +1332,40 @@ class BalticHubSpikeRequest(BaseModel):
     phone_e164: str | None = Field(default=None, description="Override call target (default VOICE_CALL_DEMO_TO)")
     dry_run: bool = Field(default=False)
     force: bool = Field(default=True, description="Bypass call cooldown")
+
+
+class CorridorSpikeRequest(BaseModel):
+    corridor_id: str = Field(..., min_length=1, max_length=120)
+    phone_e164: str | None = Field(default=None, description="Override call target (default VOICE_CALL_DEMO_TO)")
+    dry_run: bool = Field(default=False)
+    force: bool = Field(default=True, description="Bypass call cooldown")
+
+
+@app.post("/api/v1/demo/corridor-spike")
+async def demo_corridor_spike(body: CorridorSpikeRequest) -> dict[str, Any]:
+    """One-shot demo: inject synthetic delay spike on a corridor, book slot, call spedition."""
+    phone = (
+        body.phone_e164
+        if body.phone_e164
+        else os.environ.get("VOICE_CALL_DEMO_TO", "+48728538889")
+    ).strip()
+    if not body.dry_run and not is_voice_call_configured():
+        raise HTTPException(status_code=503, detail="voice_not_configured")
+    try:
+        return await run_corridor_spike_demo(
+            corridor_id=body.corridor_id.strip(),
+            observation_store=observation_store,
+            phone_e164=phone,
+            dry_run=body.dry_run,
+            force_call=body.force,
+        )
+    except ValueError as exc:
+        if str(exc).startswith("corridor_not_found"):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Corridor spike demo failed for %s", body.corridor_id)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/demo/baltic-hub-spike")

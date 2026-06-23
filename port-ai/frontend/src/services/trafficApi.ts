@@ -165,6 +165,41 @@ export async function deleteCorridor(
   return response.json() as Promise<{ ok: boolean; corridor_id: string }>
 }
 
+export interface CorridorSpikeDemoResponse {
+  ok: boolean
+  corridor_id: string
+  max_predicted_delay_sec?: number
+  dispatch?: {
+    alert_count?: number
+    calls?: Array<{ status?: string; call_sid?: string }>
+  }
+}
+
+export async function triggerCorridorSpikeDemo(
+  corridorId: string,
+  payload?: { dry_run?: boolean; force?: boolean },
+): Promise<CorridorSpikeDemoResponse> {
+  const token = getStoredToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  const response = await fetch('/api/v1/demo/corridor-spike', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      corridor_id: corridorId,
+      force: payload?.force ?? true,
+      dry_run: payload?.dry_run ?? false,
+    }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<CorridorSpikeDemoResponse>
+}
+
 export interface VoiceDemoCallResponse {
   ok: boolean
   call_sid: string

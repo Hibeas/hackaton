@@ -229,14 +229,25 @@
 }
 
 .voice-demo__btn:disabled {
-  cursor: wait;
-  opacity: 0.75;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.voice-demo__btn--disabled:disabled {
+  cursor: not-allowed;
 }
 
 .voice-demo__btn--busy {
   border-color: #fcd34d;
   background: #fffbeb;
   color: #b45309;
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.voice-demo__btn--busy:disabled {
+  cursor: wait;
+  opacity: 0.85;
 }
 
 .voice-demo__btn--ok {
@@ -287,6 +298,87 @@
   display: flex;
   flex: 1;
   min-height: 0;
+}
+
+.corridor-report-popup .leaflet-popup-content {
+  margin: 10px 12px 12px;
+}
+
+.corridor-report {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.corridor-report__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.corridor-report__title {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}
+
+.corridor-report__meta {
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.corridor-report__badge {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+}
+
+.corridor-report__badge--clear {
+  background: var(--color-verdict-normal);
+}
+
+.corridor-report__block h4 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.corridor-report__block p {
+  margin: 0;
+}
+
+.corridor-report__block--action {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  border-left: 3px solid var(--color-verdict-watch);
+}
+
+.corridor-report__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.corridor-report__metrics strong {
+  color: var(--color-text);
 }
 
 .map-panel {

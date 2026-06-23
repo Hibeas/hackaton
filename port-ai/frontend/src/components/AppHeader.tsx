@@ -9,12 +9,15 @@ import {
 } from '../constants/forecast'
 import { useAuth } from '../context/AuthContext'
 import { LanguageSwitcher } from './LanguageSwitcher'
-import { VoiceDemoCallButton } from './VoiceDemoCallButton'
+import { CorridorSpikeDemoButton } from './CorridorSpikeDemoButton'
 
 interface AppHeaderProps {
   ports: PortConfig[]
   selectedPortId: string
   onPortSelect: (portId: string) => void
+  selectedCorridorId: string | null
+  selectedCorridorName: string | null
+  onSpikeDemoComplete?: () => void
   dashboardMode: DashboardMode
   onDashboardModeChange: (mode: DashboardMode) => void
   forecastHorizon: number
@@ -31,6 +34,9 @@ export function AppHeader({
   forecastHorizon,
   onForecastHorizonChange,
   isLive,
+  selectedCorridorId,
+  selectedCorridorName,
+  onSpikeDemoComplete,
 }: AppHeaderProps) {
   const { t } = useTranslation()
   const { t: tAuth } = useTranslation('auth')
@@ -97,7 +103,11 @@ export function AppHeader({
       </div>
 
       <div className="app-header__actions">
-        <VoiceDemoCallButton />
+        <CorridorSpikeDemoButton
+          selectedCorridorId={selectedCorridorId}
+          selectedCorridorName={selectedCorridorName}
+          onComplete={onSpikeDemoComplete}
+        />
         <a className="app-header__link" href="#/corridor-editor">
           {t('corridorEditor.navLink')}
         </a>

@@ -218,7 +218,25 @@
     "heatmapIncidents": "Incident heatmap ({{count}})",
     "terminalsLayer": "Terminals ({{count}})",
     "tirZonesLayer": "TIR zones ({{count}})",
-    "renderError": "Map failed to render — refresh the page"
+    "renderError": "Map failed to render — refresh the page",
+    "report": {
+      "what": "What is happening",
+      "why": "Likely cause",
+      "recommendation": "Recommendation",
+      "alertBadge": "Alert {{severity}}",
+      "clearBadge": "No alert",
+      "whatClear": "Corridor {{corridor}} — traffic normal, no active anomaly.",
+      "whatElevated": "Corridor {{corridor}} — elevated delay ({{delay}}, {{incidents}} TomTom incidents), no formal engine alert.",
+      "whyUnknown": "No clear TomTom/ZTM cause for this corridor.",
+      "recommendClear": "Continue monitoring. No TIR dispatch changes needed.",
+      "recommendMonitor": "{{dispatch}} — watch the corridor and forecast every 10–15 min.",
+      "recommendCaution": "{{dispatch}} — limit new TIR dispatch on this corridor; notify slotted speditions.",
+      "recommendHold": "{{dispatch}} — hold TIR dispatch on this corridor until traffic stabilizes.",
+      "recommendForecastHigh": "Forecast shows high delay ({{delay}}) — consider delaying departures and checking gate slots.",
+      "forecastLine": "Forecast in {{horizon}} min: about {{delay}}.",
+      "bottleneckLine": "Bottleneck rank (60 min): #{{rank}}, stress {{stress}}.",
+      "forecastShort": "+{{horizon}} min: ~{{delay}} s"
+    }
   },
   "portOps": {
     "title": "Port operations",
@@ -241,15 +259,16 @@
       "idle": "Idle"
     }
   },
-  "voice": {
-    "demoCall": "Test call",
-    "demoCallHint": "Temporary demo: ElevenLabs + Twilio voice alert",
-    "demoMessage": "Attention. Port AI detected a sudden delay spike near Baltic Hub. About 15 minutes to BCT gate — check your slot.",
-    "calling": "Calling…",
-    "callOk": "Sent",
-    "callError": "Error",
+  "spikeDemo": {
+    "button": "Test spike",
+    "buttonHint": "Inject synthetic delay spike for {{corridor}} and trigger voice alert",
+    "selectCorridor": "Select corridor",
+    "selectCorridorHint": "Click a corridor in the sidebar to run a spike demo",
+    "running": "Injecting spike…",
+    "ok": "Spike sent",
+    "error": "Error",
     "errorNotConfigured": "Missing TWILIO/ELEVENLABS in backend/.env",
-    "errorNoNumber": "Set VOICE_CALL_DEMO_TO in .env",
+    "errorCorridorNotFound": "Corridor not found in backend config",
     "errorProvider": "ElevenLabs/Twilio error — check backend logs"
   },
   "language": {

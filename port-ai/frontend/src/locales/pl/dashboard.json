@@ -218,7 +218,25 @@
     "heatmapIncidents": "Heatmapa incydentów ({{count}})",
     "terminalsLayer": "Terminale ({{count}})",
     "tirZonesLayer": "Strefy TIR ({{count}})",
-    "renderError": "Błąd renderowania mapy — odśwież stronę"
+    "renderError": "Błąd renderowania mapy — odśwież stronę",
+    "report": {
+      "what": "Co się dzieje",
+      "why": "Prawdopodobna przyczyna",
+      "recommendation": "Rekomendacja",
+      "alertBadge": "Alert {{severity}}",
+      "clearBadge": "Bez alertu",
+      "whatClear": "Korytarz {{corridor}} — ruch w normie, brak aktywnej anomalii.",
+      "whatElevated": "Korytarz {{corridor}} — podwyższone opóźnienie ({{delay}}, {{incidents}} incydentów TomTom), bez formalnego alertu silnika.",
+      "whyUnknown": "Brak jednoznacznej przyczyny w danych TomTom/ZTM dla tego odcinka.",
+      "recommendClear": "Kontynuuj monitoring. Brak potrzeby zmiany dispatchu TIR.",
+      "recommendMonitor": "{{dispatch}} — obserwuj sytuację i prognozę co 10–15 min.",
+      "recommendCaution": "{{dispatch}} — ogranicz nowe dispatch'e TIR na ten korytarz; poinformuj spedycje ze slotami.",
+      "recommendHold": "{{dispatch}} — wstrzymaj dispatch TIR na ten odcinek do ustabilizowania ruchu.",
+      "recommendForecastHigh": "Prognoza wskazuje wysokie opóźnienie ({{delay}}) — rozważ opóźnienie wyjazdów i weryfikację slotów bramowych.",
+      "forecastLine": "Prognoza za {{horizon}} min: ok. {{delay}}.",
+      "bottleneckLine": "W rankingu wąskich gardeł (60 min): poz. {{rank}}, stres {{stress}}.",
+      "forecastShort": "+{{horizon}} min: ~{{delay}} s"
+    }
   },
   "portOps": {
     "title": "Operacje portowe",
@@ -241,15 +259,16 @@
       "idle": "Bez ruchu"
     }
   },
-  "voice": {
-    "demoCall": "Test połączenia",
-    "demoCallHint": "Tymczasowy demo: alert głosowy ElevenLabs + Twilio",
-    "demoMessage": "Uwaga. Port A I wykrył nagły wzrost opóźnień w rejonie Baltic Hub. Prognoza około piętnastu minut na dojeździe do BCT. Sprawdź slot bramowy.",
-    "calling": "Dzwonię…",
-    "callOk": "Wysłano",
-    "callError": "Błąd",
+  "spikeDemo": {
+    "button": "Test spike",
+    "buttonHint": "Sztuczny spike opóźnień dla {{corridor}} + alert głosowy do spedycji",
+    "selectCorridor": "Wybierz korytarz",
+    "selectCorridorHint": "Kliknij korytarz w panelu bocznym, aby uruchomić test spike",
+    "running": "Wstrzykiwanie spike…",
+    "ok": "Spike wysłany",
+    "error": "Błąd",
     "errorNotConfigured": "Brak TWILIO/ELEVENLABS w backend/.env",
-    "errorNoNumber": "Ustaw VOICE_CALL_DEMO_TO w .env",
+    "errorCorridorNotFound": "Nie znaleziono korytarza w konfiguracji backendu",
     "errorProvider": "Błąd ElevenLabs/Twilio — sprawdź logi backendu"
   },
   "language": {

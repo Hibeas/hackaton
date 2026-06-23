@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PORTS } from './constants/ports'
+import { PORTS, getCorridor } from './constants/ports'
 import { CorridorBBoxEditor } from './components/CorridorBBoxEditor'
 import { AppHeader } from './components/AppHeader'
 import { DashboardSidebar } from './components/DashboardSidebar'
@@ -10,7 +10,11 @@ import { MapErrorBoundary } from './components/MapErrorBoundary'
 import { LoginPage } from './components/LoginPage'
 import { useAuth } from './context/AuthContext'
 import { useTrafficDashboard } from './hooks/useTrafficDashboard'
-import { filterUiPorts, resolveFocusGeometry } from './utils/corridorConfigHelpers'
+import { filterUiPorts, findPort, resolveFocusGeometry } from './utils/corridorConfigHelpers'
+import {
+  buildOperationalReport,
+  resolveCorridorMapCenter,
+} from './utils/operationalReport'
 import { DEFAULT_FORECAST_HORIZON, type DashboardMode } from './constants/forecast'
 import './App.css'
 
@@ -52,6 +56,7 @@ function DashboardView() {
     error,
     lastUpdatedAt,
     refreshIntervalMs,
+    refresh,
   } = useTrafficDashboard()
 
   const ports = useMemo(
@@ -64,9 +69,60 @@ function DashboardView() {
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>('live')
   const [forecastHorizon, setForecastHorizon] = useState(DEFAULT_FORECAST_HORIZON)
 
+  const selectedCorridorName = useMemo(() => {
+    if (!selectedCorridorId) {
+      return null
+    }
+    const fromConfig = getCorridor(selectedCorridorId)?.name
+    if (fromConfig) {
+      return fromConfig
+    }
+    for (const port of ports) {
+      const corridor = port.corridors.find((item) => item.id === selectedCorridorId)
+      if (corridor) {
+        return corridor.name
+      }
+    }
+    return selectedCorridorId
+  }, [ports, selectedCorridorId])
+
   const focusGeometry = useMemo(
     () => resolveFocusGeometry(ports, selectedPortId, selectedCorridorId),
     [ports, selectedCorridorId, selectedPortId],
+  )
+
+  const selectedPort = useMemo(() => findPort(ports, selectedPortId), [ports, selectedPortId])
+
+  const corridorReport = useMemo(() => {
+    if (!selectedCorridorId || !selectedCorridorName) {
+      return null
+    }
+    return buildOperationalReport(selectedCorridorId, {
+      corridorName: selectedCorridorName,
+      portName: selectedPort?.name ?? selectedPortId,
+      engineEvents,
+      corridors,
+      bottlenecks,
+      delayForecasts: mapData?.delay_forecasts,
+      forecastHorizon,
+      t,
+    })
+  }, [
+    selectedCorridorId,
+    selectedCorridorName,
+    selectedPort,
+    selectedPortId,
+    engineEvents,
+    corridors,
+    bottlenecks,
+    mapData?.delay_forecasts,
+    forecastHorizon,
+    t,
+  ])
+
+  const reportPopupPosition = useMemo(
+    () => resolveCorridorMapCenter(focusGeometry.bbox, focusGeometry.polygon),
+    [focusGeometry.bbox, focusGeometry.polygon],
   )
 
   const handlePortSelect = (portId: string) => {
@@ -89,6 +145,11 @@ function DashboardView() {
         forecastHorizon={forecastHorizon}
         onForecastHorizonChange={(horizon) => setForecastHorizon(horizon as typeof DEFAULT_FORECAST_HORIZON)}
         isLive={!isLoading && !error}
+        selectedCorridorId={selectedCorridorId}
+        selectedCorridorName={selectedCorridorName}
+        onSpikeDemoComplete={() => {
+          void refresh()
+        }}
       />
 
       <main className="app-main">
@@ -115,6 +176,11 @@ function DashboardView() {
                 terminals={mapData.port_operations?.terminals_catalog ?? []}
                 focusBbox={focusGeometry.bbox}
                 focusPolygon={focusGeometry.polygon}
+                selectedPort={selectedPort}
+                selectedCorridorId={selectedCorridorId}
+                corridorReport={corridorReport}
+                reportPopupPosition={reportPopupPosition}
+                onCorridorSelect={handleCorridorSelect}
               />
             </MapErrorBoundary>
           ) : (

@@ -3,9 +3,7 @@ import {
   CircleMarker,
   GeoJSON,
   MapContainer,
-  Polygon,
   Popup,
-  Rectangle,
   TileLayer,
   useMap,
 } from 'react-leaflet'
@@ -28,6 +26,13 @@ import { TomTomHeatmapLayer } from './TomTomHeatmapLayer'
 import { TerminalMarkers } from './TerminalMarkers'
 import type { TerminalCatalogEntry } from '../types/portOps'
 import { filterVisibleTerminals } from '../utils/portOpsHelpers'
+import type { PortConfig } from '../constants/ports'
+import type { OperationalReport } from '../utils/operationalReport'
+import {
+  CorridorHighlight,
+  CorridorReportPopup,
+  PortCorridorsLayer,
+} from './CorridorMapLayers'
 
 interface TrafficMapProps {
   primary: MapDataLayer
@@ -37,6 +42,11 @@ interface TrafficMapProps {
   terminals?: TerminalCatalogEntry[]
   focusBbox?: CorridorBbox | null
   focusPolygon?: LatLng[] | null
+  selectedPort?: PortConfig
+  selectedCorridorId?: string | null
+  corridorReport?: OperationalReport | null
+  reportPopupPosition?: [number, number] | null
+  onCorridorSelect?: (corridorId: string) => void
 }
 
 function FlyToBbox({ bbox }: { bbox?: CorridorBbox | null }) {
@@ -56,47 +66,6 @@ function FlyToBbox({ bbox }: { bbox?: CorridorBbox | null }) {
   }, [bbox, map])
 
   return null
-}
-
-function CorridorHighlight({
-  bbox,
-  polygon,
-}: {
-  bbox?: CorridorBbox | null
-  polygon?: LatLng[] | null
-}) {
-  if (polygon && polygon.length >= 3) {
-    return (
-      <Polygon
-        positions={polygon}
-        pathOptions={{
-          color: '#475569',
-          weight: 2,
-          fillOpacity: 0.08,
-          dashArray: '6 4',
-        }}
-      />
-    )
-  }
-
-  if (!bbox) {
-    return null
-  }
-
-  return (
-    <Rectangle
-      bounds={[
-        [bbox.min_lat, bbox.min_lon],
-        [bbox.max_lat, bbox.max_lon],
-      ]}
-      pathOptions={{
-        color: '#475569',
-        weight: 2,
-        fillOpacity: 0.08,
-        dashArray: '6 4',
-      }}
-    />
-  )
 }
 
 function incidentStyle(feature?: GeoJSON.Feature) {
@@ -271,6 +240,11 @@ export function TrafficMap({
   terminals = [],
   focusBbox,
   focusPolygon,
+  selectedPort,
+  selectedCorridorId = null,
+  corridorReport = null,
+  reportPopupPosition = null,
+  onCorridorSelect,
 }: TrafficMapProps) {
   const visibleTerminals = useMemo(() => filterVisibleTerminals(terminals), [terminals])
 
@@ -301,10 +275,18 @@ export function TrafficMap({
         />
         <TomTomHeatmapLayer points={heatmapPoints} enabled />
         <TerminalMarkers terminals={visibleTerminals} />
+        {onCorridorSelect ? (
+          <PortCorridorsLayer
+            port={selectedPort}
+            selectedCorridorId={selectedCorridorId}
+            onCorridorSelect={onCorridorSelect}
+          />
+        ) : null}
         <ContextSegmentLayer segments={segments} />
         <ContextVehicleMarkers vehicles={vehicles} />
         <IncidentLayer incidents={primary.events} />
         <CorridorHighlight bbox={focusBbox} polygon={focusPolygon} />
+        <CorridorReportPopup position={reportPopupPosition} report={corridorReport} />
         <FlyToBbox bbox={focusBbox} />
       </MapContainer>
     </div>

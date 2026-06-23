@@ -85,6 +85,14 @@ def _find_corridor(config: dict[str, Any], corridor_id: str) -> tuple[dict[str, 
     return None
 
 
+def find_corridor_by_id(corridor_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Resolve port + corridor metadata from corridors.json."""
+    found = _find_corridor(load_corridor_config(), corridor_id)
+    if not found:
+        raise ValueError(f"corridor_not_found:{corridor_id}")
+    return found
+
+
 def update_port_geometry(
     port_id: str,
     bbox: dict[str, float],
