@@ -1,2 +1,4 @@
 TomTom/__pycache__/mainv2.cpython-314.pyc
 TomTom/traffic_report.txt
+.DS_Store
+**/__pycache__/

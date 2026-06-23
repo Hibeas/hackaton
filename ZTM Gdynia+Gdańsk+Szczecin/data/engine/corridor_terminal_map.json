@@ -1,0 +1,17 @@
+{
+  "mappings": [
+    {"corridor_id": "trasa_sucharskiego", "terminals": ["DCT", "PLGDN"], "approach_zone_ids": ["dct_s6_sucharski", "dct_obwodnica"]},
+    {"corridor_id": "tunel_martwa_wisla", "terminals": ["DCT", "BCT"], "approach_zone_ids": ["dct_obwodnica"]},
+    {"corridor_id": "marynarki_polskiej", "terminals": ["BCT"], "approach_zone_ids": ["bct_sucharskiego"]},
+    {"corridor_id": "wezel_s7_sucharskiego", "terminals": ["BCT", "DCT"], "approach_zone_ids": ["bct_sucharskiego", "dct_s6_sucharski"]},
+    {"corridor_id": "baltic_hub_gate", "terminals": ["BCT"], "approach_zone_ids": ["bct_nowy_port"]},
+    {"corridor_id": "estakada_kwiatkowskiego", "terminals": ["GCT", "PLGDY"], "approach_zone_ids": ["gct_kwiatkowskiego"]},
+    {"corridor_id": "janka_wisniewskiego", "terminals": ["GCT", "BCT"], "approach_zone_ids": ["gct_marynarki"]},
+    {"corridor_id": "ul_polska", "terminals": ["GCT", "PLGDY"], "approach_zone_ids": ["gct_marynarki"]},
+    {"corridor_id": "s6_wezel_estakada", "terminals": ["GCT", "PLGDY"], "approach_zone_ids": ["gct_kwiatkowskiego"]},
+    {"corridor_id": "s3_swinoujscie", "terminals": ["PLSZZ"], "approach_zone_ids": ["plszz_s3"]},
+    {"corridor_id": "tunel_swinoujscie", "terminals": ["PLSZZ"], "approach_zone_ids": ["plszz_tunel"]},
+    {"corridor_id": "wezel_s3_port", "terminals": ["PLSZZ"], "approach_zone_ids": ["plszz_s3", "plszz_wojska"]},
+    {"corridor_id": "terminal_promowy", "terminals": ["PLSZZ"], "approach_zone_ids": ["plszz_wojska"]}
+  ]
+}
