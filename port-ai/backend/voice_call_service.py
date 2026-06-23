@@ -44,6 +44,30 @@ def twilio_from_number() -> str:
     return normalize_phone_number(_env("TWILIO_NUMBER"))
 
 
+def twilio_status_callback_url() -> str | None:
+    explicit = _env("TWILIO_STATUS_CALLBACK_URL")
+    if explicit:
+        return explicit.rstrip("/")
+    base = _env("PUBLIC_API_BASE_URL").rstrip("/")
+    if not base:
+        return None
+    return f"{base}/api/v1/voice/twilio/status"
+
+
+def map_twilio_call_status(twilio_status: str, *, duration_sec: int | None = None) -> str | None:
+    """Map Twilio CallStatus to tms_slot_calls status; None = no DB update yet."""
+    status = twilio_status.strip().lower()
+    if status in {"in-progress", "answered"}:
+        return "answered"
+    if status == "completed":
+        if duration_sec is not None and duration_sec > 0:
+            return "answered"
+        return None
+    if status in {"busy", "failed", "no-answer", "canceled"}:
+        return "failed"
+    return None
+
+
 def elevenlabs_api_key() -> str:
     return _env("ELEVENLABS_API_KEY")
 
@@ -159,12 +183,56 @@ def place_twilio_call(*, to_number: str, twiml: str, from_number: str | None = N
         raise RuntimeError("twilio package not installed (pip install twilio)") from exc
 
     client = Client(twilio_account_sid(), twilio_auth_token())
-    call = client.calls.create(
-        to=to_number,
-        from_=from_number or twilio_from_number(),
-        twiml=twiml,
-    )
+    callback_url = twilio_status_callback_url()
+    create_kwargs: dict[str, Any] = {
+        "to": to_number,
+        "from_": from_number or twilio_from_number(),
+        "twiml": twiml,
+    }
+    if callback_url:
+        create_kwargs["status_callback"] = callback_url
+        create_kwargs["status_callback_method"] = "POST"
+        create_kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed"]
+        logger.info("Twilio status callback: %s", callback_url)
+    else:
+        logger.warning(
+            "Twilio status callback disabled — set PUBLIC_API_BASE_URL or TWILIO_STATUS_CALLBACK_URL "
+            "so answered calls update tms_slot_calls"
+        )
+
+    call = client.calls.create(**create_kwargs)
     return str(call.sid)
+
+
+def validate_twilio_webhook(request_url: str, params: dict[str, str], signature: str) -> bool:
+    if (_env("TWILIO_VALIDATE_WEBHOOK") or "true").lower() in {"0", "false", "no", "off"}:
+        return True
+    if not signature:
+        return False
+    try:
+        from twilio.request_validator import RequestValidator
+    except ImportError as exc:
+        raise RuntimeError("twilio package not installed (pip install twilio)") from exc
+    validator = RequestValidator(twilio_auth_token())
+    return validator.validate(request_url, params, signature)
+
+
+def apply_twilio_call_status_update(
+    *,
+    call_sid: str,
+    twilio_status: str,
+    duration_sec: int | None = None,
+) -> dict[str, Any] | None:
+    from tms.database import tms_database
+
+    mapped = map_twilio_call_status(twilio_status, duration_sec=duration_sec)
+    if mapped is None:
+        return None
+    return tms_database.update_slot_call_from_twilio(
+        call_sid=call_sid,
+        call_status=mapped,
+        twilio_status=twilio_status,
+    )
 
 
 async def resolve_call_twiml(to_number: str, message: str) -> tuple[str, str]:

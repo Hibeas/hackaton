@@ -92,6 +92,10 @@ def ensure_demo_slot_and_spedition(
     start_hour, start_minute, start = _slot_window_for_now(now_local)
     terminal_code = context["terminal_code"]
     slot_id = f"SLOT-{terminal_code}-DEMO-{start.strftime('%H%M')}"
+    window_end = start + timedelta(minutes=45)
+    window_start_utc = start.astimezone(timezone.utc)
+    window_end_utc = window_end.astimezone(timezone.utc)
+    booking_ref = f"MSC-DEMO-{context['corridor_id']}-{now_local.strftime('%Y%m%d-%H%M')}"
 
     operator = _find_user_by_phone(phone_e164)
     display_name = company_name or (
@@ -116,9 +120,12 @@ def ensure_demo_slot_and_spedition(
             "start_minute": start_minute,
             "duration_minutes": 45,
             "container_count": 2,
-            "booking_ref": f"MSC-DEMO-{context['corridor_id']}-{now_local.strftime('%Y%m%d-%H%M')}",
-            "status": "confirmed",
+            "booking_ref": booking_ref,
+            "status": "at_risk",
             "corridor_ids": context["corridor_ids_for_slot"],
+            "window_start_at": window_start_utc.isoformat(),
+            "window_end_at": window_end_utc.isoformat(),
+            "at_risk_since": now_local.astimezone(timezone.utc).isoformat(),
         },
     )
     spedition_id = f"SPD-DEMO-{_slug(corridor_id)}"

@@ -60,8 +60,36 @@ CREATE TABLE IF NOT EXISTS tms_slot_templates (
   booking_ref TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'confirmed',
   corridor_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  at_risk_since TIMESTAMPTZ,
+  window_start_at TIMESTAMPTZ,
+  window_end_at TIMESTAMPTZ,
   PRIMARY KEY (provider_id, slot_id)
 );
+
+CREATE TABLE IF NOT EXISTS tms_slot_calls (
+  id BIGSERIAL PRIMARY KEY,
+  provider_id TEXT NOT NULL,
+  booking_ref TEXT NOT NULL,
+  slot_id TEXT NOT NULL,
+  spedition_id TEXT,
+  phone_e164 TEXT NOT NULL,
+  call_sid TEXT,
+  call_status TEXT NOT NULL DEFAULT 'initiated',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  answered_at TIMESTAMPTZ,
+  CONSTRAINT tms_slot_calls_status_check
+    CHECK (call_status IN ('initiated', 'answered', 'failed', 'skipped'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tms_slot_calls_one_answered_per_booking
+  ON tms_slot_calls (booking_ref)
+  WHERE call_status = 'answered';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tms_slot_calls_one_active_per_booking
+  ON tms_slot_calls (booking_ref)
+  WHERE call_status IN ('initiated', 'answered');
 
 CREATE TABLE IF NOT EXISTS tms_speditions (
   provider_id TEXT NOT NULL REFERENCES tms_carriers(provider_id),
