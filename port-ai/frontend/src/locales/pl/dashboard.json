@@ -59,7 +59,8 @@
     "engineEvents": "Zdarzenia silnika",
     "tomtomIncidents": "TomTom",
     "ztmContext": "Kontekst ZTM",
-    "seconds": "{{count}} s"
+    "seconds": "{{count}} s",
+    "crowdDemo": "Demo tłum: {{corridor}}"
   },
   "engine": {
     "title": "Silnik anomalii portowych",
@@ -258,6 +259,15 @@
       "low": "Niski popyt TIR",
       "idle": "Bez ruchu"
     }
+  },
+  "crowdDemo": {
+    "show": "Tłum na mapie",
+    "hide": "Ukryj tłum",
+    "loading": "Ładowanie…",
+    "error": "Błąd demo",
+    "selectCorridor": "Wybierz korytarz",
+    "selectCorridorHint": "Kliknij korytarz w panelu bocznym, aby pokazać sztuczny tłum",
+    "buttonHint": "Heatmapa + incydenty demo na {{corridor}} (120→960 s opóźnienia)"
   },
   "spikeDemo": {
     "button": "Test spike",

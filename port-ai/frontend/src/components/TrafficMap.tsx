@@ -39,6 +39,7 @@ interface TrafficMapProps {
   context: MapDataLayer
   heatmapPoints?: HeatmapPoint[]
   flowTileUrl?: string
+  crowdDemoActive?: boolean
   terminals?: TerminalCatalogEntry[]
   focusBbox?: CorridorBbox | null
   focusPolygon?: LatLng[] | null
@@ -237,6 +238,7 @@ export function TrafficMap({
   context,
   heatmapPoints = [],
   flowTileUrl = '/api/v1/tomtom/tiles/flow/relative0/{z}/{x}/{y}.png',
+  crowdDemoActive = false,
   terminals = [],
   focusBbox,
   focusPolygon,
@@ -266,14 +268,20 @@ export function TrafficMap({
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <TileLayer
-          url={flowTileUrl}
-          opacity={0.62}
-          zIndex={450}
-          maxNativeZoom={18}
-          maxZoom={22}
+        {flowTileUrl ? (
+          <TileLayer
+            url={flowTileUrl}
+            opacity={0.62}
+            zIndex={450}
+            maxNativeZoom={18}
+            maxZoom={22}
+          />
+        ) : null}
+        <TomTomHeatmapLayer
+          points={heatmapPoints}
+          enabled
+          boostIntensity={crowdDemoActive}
         />
-        <TomTomHeatmapLayer points={heatmapPoints} enabled />
         <TerminalMarkers terminals={visibleTerminals} />
         {onCorridorSelect ? (
           <PortCorridorsLayer

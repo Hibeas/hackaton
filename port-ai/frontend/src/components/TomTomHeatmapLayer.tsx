@@ -15,9 +15,10 @@ const HEAT_GRADIENT: Record<number, string> = {
 interface TomTomHeatmapLayerProps {
   points: HeatmapPoint[]
   enabled: boolean
+  boostIntensity?: boolean
 }
 
-export function TomTomHeatmapLayer({ points, enabled }: TomTomHeatmapLayerProps) {
+export function TomTomHeatmapLayer({ points, enabled, boostIntensity = false }: TomTomHeatmapLayerProps) {
   const map = useMap()
 
   useEffect(() => {
@@ -28,15 +29,15 @@ export function TomTomHeatmapLayer({ points, enabled }: TomTomHeatmapLayerProps)
     const latlngs: [number, number, number][] = points.map((point) => [
       point.lat,
       point.lon,
-      point.intensity,
+      boostIntensity ? Math.min(1, point.intensity * 1.15) : point.intensity,
     ])
 
     const layer = L.heatLayer(latlngs, {
-      radius: 24,
-      blur: 20,
+      radius: boostIntensity ? 32 : 24,
+      blur: boostIntensity ? 26 : 20,
       maxZoom: 15,
       max: 1,
-      minOpacity: 0.35,
+      minOpacity: boostIntensity ? 0.5 : 0.35,
       gradient: HEAT_GRADIENT,
     })
     layer.addTo(map)
@@ -44,7 +45,7 @@ export function TomTomHeatmapLayer({ points, enabled }: TomTomHeatmapLayerProps)
     return () => {
       map.removeLayer(layer)
     }
-  }, [enabled, map, points])
+  }, [boostIntensity, enabled, map, points])
 
   return null
 }

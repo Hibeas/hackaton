@@ -39,6 +39,7 @@ from port_events import (
     build_terminals_catalog,
 )
 from demo_baltic_spike_service import run_baltic_hub_spike_demo, run_corridor_spike_demo
+from synthetic_crowd_map import build_crowd_map_payload
 from hybrid_delay_forecaster import DEFAULT_HORIZONS, build_forecast_response
 from kafka_prediction_buffer import kafka_consumer_loop, kafka_prediction_buffer
 from tomtom_service import TOMTOM_API_KEY, build_heatmap_points, collect_tomtom_events
@@ -1337,8 +1338,25 @@ class BalticHubSpikeRequest(BaseModel):
 class CorridorSpikeRequest(BaseModel):
     corridor_id: str = Field(..., min_length=1, max_length=120)
     phone_e164: str | None = Field(default=None, description="Override call target (default VOICE_CALL_DEMO_TO)")
-    dry_run: bool = Field(default=False)
+    dry_run: bool = Field(default=True, description="Skip voice calls (default for demo without ElevenLabs)")
     force: bool = Field(default=True, description="Bypass call cooldown")
+
+
+@app.get("/api/v1/demo/crowd-map")
+async def demo_crowd_map(
+    corridor_id: str = Query(..., min_length=1, max_length=120),
+    peak_delay_sec: int = Query(default=960, ge=60, le=3600),
+) -> dict[str, Any]:
+    """Synthetic crowd as TomTom-shaped incidents + heatmap for map demo."""
+    try:
+        return build_crowd_map_payload(
+            corridor_id.strip(),
+            peak_delay_sec=peak_delay_sec,
+        )
+    except ValueError as exc:
+        if str(exc).startswith("corridor_not_found"):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/demo/corridor-spike")

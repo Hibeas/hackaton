@@ -73,6 +73,19 @@ export interface TomTomHeatmapLayer {
   flow_tile_url: string
 }
 
+export interface CrowdMapOverlayResponse {
+  corridor_id: string
+  corridor_name?: string
+  peak_delay_sec: number
+  primary: MapDataLayer
+  heatmap: {
+    source: string
+    points: HeatmapPoint[]
+    flow_tile_url?: string | null
+  }
+  generated_at: string
+}
+
 export interface MapDataResponse {
   primary: MapDataLayer
   context: MapDataLayer

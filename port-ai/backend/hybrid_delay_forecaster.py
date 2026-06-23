@@ -20,8 +20,9 @@ def _forecast_from_observation_store(
     corridor_id: str,
     port_id: str,
     horizon_minutes: int,
+    reference: datetime | None = None,
 ) -> dict[str, Any] | None:
-    history = store.get_history(corridor_id, minutes=30)
+    history = store.get_history(corridor_id, minutes=30, reference=reference)
     if len(history) < 2:
         return None
 
@@ -53,11 +54,14 @@ def build_corridor_forecasts(
     horizons: tuple[int, ...] = DEFAULT_HORIZONS,
     port_id: str | None = None,
     corridor_id: str | None = None,
+    reference: datetime | None = None,
 ) -> list[dict[str, Any]]:
     buf = buffer or kafka_prediction_buffer
     store = observation_store
     config = load_corridor_config()
-    now = datetime.now(timezone.utc)
+    now = reference or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
     forecasts: list[dict[str, Any]] = []
 
     for port in config.get("ports") or []:
@@ -72,9 +76,11 @@ def build_corridor_forecasts(
             for horizon in horizons:
                 item: dict[str, Any] | None = None
                 if horizon < ML_ONLY_MIN_HORIZON:
-                    item = buf.extrapolate_delay(cid, horizon)
+                    item = buf.extrapolate_delay(cid, horizon, reference=now)
                     if item is None and store is not None:
-                        item = _forecast_from_observation_store(store, cid, pid, horizon)
+                        item = _forecast_from_observation_store(
+                            store, cid, pid, horizon, reference=now
+                        )
                 else:
                     ml_item = predict_corridor_long_term(
                         corridor,

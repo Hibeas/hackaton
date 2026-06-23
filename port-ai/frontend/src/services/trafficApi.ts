@@ -1,5 +1,6 @@
 import type {
   AnomaliesResponse,
+  CrowdMapOverlayResponse,
   MapDataResponse,
 } from '../types/traffic'
 import { getStoredToken } from './authStorage'
@@ -12,6 +13,19 @@ import type {
 import type { CorridorConfigResponse } from '../types/corridorConfig'
 import type { CorridorBbox, LatLng } from '../constants/ports'
 
+async function readApiError(response: Response): Promise<string> {
+  const body = (await response.json().catch(() => null)) as
+    | { detail?: string | Array<{ msg?: string }> }
+    | null
+  if (typeof body?.detail === 'string') {
+    return body.detail
+  }
+  if (Array.isArray(body?.detail) && body.detail[0]?.msg) {
+    return body.detail[0].msg
+  }
+  return `HTTP ${response.status}`
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const token = getStoredToken()
   const headers: Record<string, string> = {}
@@ -20,9 +34,20 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
   const response = await fetch(url, { headers })
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status} for ${url}`)
+    throw new Error(await readApiError(response))
   }
   return response.json() as Promise<T>
+}
+
+export async function fetchCrowdMapOverlay(
+  corridorId: string,
+  peakDelaySec = 960,
+): Promise<CrowdMapOverlayResponse> {
+  const search = new URLSearchParams({
+    corridor_id: corridorId,
+    peak_delay_sec: String(peakDelaySec),
+  })
+  return fetchJson<CrowdMapOverlayResponse>(`/api/v1/demo/crowd-map?${search}`)
 }
 
 export async function fetchMapData(): Promise<MapDataResponse> {
@@ -190,7 +215,7 @@ export async function triggerCorridorSpikeDemo(
     body: JSON.stringify({
       corridor_id: corridorId,
       force: payload?.force ?? true,
-      dry_run: payload?.dry_run ?? false,
+      dry_run: payload?.dry_run ?? true,
     }),
   })
   if (!response.ok) {

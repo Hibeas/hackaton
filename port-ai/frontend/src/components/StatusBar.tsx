@@ -10,6 +10,8 @@ interface StatusBarProps {
   refreshIntervalMs: number
   isLoading: boolean
   error: string | null
+  crowdDemoActive?: boolean
+  crowdCorridorName?: string | null
 }
 
 export function StatusBar({
@@ -21,6 +23,8 @@ export function StatusBar({
   refreshIntervalMs,
   isLoading,
   error,
+  crowdDemoActive = false,
+  crowdCorridorName = null,
 }: StatusBarProps) {
   const { t } = useTranslation()
   const [nextRefreshSeconds, setNextRefreshSeconds] = useState(0)
@@ -52,7 +56,11 @@ export function StatusBar({
   return (
     <footer className="status-bar">
       <span className={`status-bar__item${isLoading ? ' status-bar__item--pulse' : ''}`}>
-        {isLoading ? t('status.loading') : t('status.live')}
+        {crowdDemoActive
+          ? t('status.crowdDemo', { corridor: crowdCorridorName ?? '—' })
+          : isLoading
+            ? t('status.loading')
+            : t('status.live')}
       </span>
       <span className="status-bar__divider" />
       <span className="status-bar__item">

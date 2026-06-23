@@ -16,6 +16,7 @@ import {
   resolveCorridorMapCenter,
 } from './utils/operationalReport'
 import { DEFAULT_FORECAST_HORIZON, type DashboardMode } from './constants/forecast'
+import type { CrowdMapOverlayResponse } from './types/traffic'
 import './App.css'
 
 type AppView = 'dashboard' | 'editor' | 'login'
@@ -68,6 +69,40 @@ function DashboardView() {
   const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(null)
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>('live')
   const [forecastHorizon, setForecastHorizon] = useState(DEFAULT_FORECAST_HORIZON)
+  const [crowdOverlay, setCrowdOverlay] = useState<CrowdMapOverlayResponse | null>(null)
+
+  const mapPrimary = useMemo(() => {
+    if (!mapData?.primary) {
+      return null
+    }
+    if (!crowdOverlay) {
+      return mapData.primary
+    }
+    return {
+      ...mapData.primary,
+      events: [...mapData.primary.events, ...crowdOverlay.primary.events],
+      incident_count:
+        (mapData.primary.incident_count ?? mapData.primary.events.length) +
+        crowdOverlay.primary.events.length,
+    }
+  }, [mapData?.primary, crowdOverlay])
+
+  const mapHeatmapPoints = useMemo(() => {
+    if (crowdOverlay) {
+      return crowdOverlay.heatmap.points
+    }
+    return mapData?.heatmap?.points ?? []
+  }, [crowdOverlay, mapData?.heatmap?.points])
+
+  const mapFlowTileUrl = crowdOverlay
+    ? undefined
+    : mapData?.heatmap?.flow_tile_url
+
+  const handlePortSelect = (portId: string) => {
+    setSelectedPortId(portId)
+    setSelectedCorridorId(null)
+    setCrowdOverlay(null)
+  }
 
   const selectedCorridorName = useMemo(() => {
     if (!selectedCorridorId) {
@@ -125,13 +160,9 @@ function DashboardView() {
     [focusGeometry.bbox, focusGeometry.polygon],
   )
 
-  const handlePortSelect = (portId: string) => {
-    setSelectedPortId(portId)
-    setSelectedCorridorId(null)
-  }
-
   const handleCorridorSelect = (corridorId: string) => {
     setSelectedCorridorId((current) => (current === corridorId ? null : corridorId))
+    setCrowdOverlay(null)
   }
 
   return (
@@ -150,6 +181,8 @@ function DashboardView() {
         onSpikeDemoComplete={() => {
           void refresh()
         }}
+        crowdOverlay={crowdOverlay}
+        onCrowdOverlayChange={setCrowdOverlay}
       />
 
       <main className="app-main">
@@ -166,13 +199,14 @@ function DashboardView() {
         />
 
         <div className="map-panel">
-          {mapData?.primary ? (
+          {mapPrimary ? (
             <MapErrorBoundary fallback={<div className="map-placeholder">{t('map.renderError')}</div>}>
               <TrafficMap
-                primary={mapData.primary}
+                primary={mapPrimary}
                 context={mapData.context}
-                heatmapPoints={mapData.heatmap?.points ?? []}
-                flowTileUrl={mapData.heatmap?.flow_tile_url}
+                heatmapPoints={mapHeatmapPoints}
+                flowTileUrl={mapFlowTileUrl}
+                crowdDemoActive={crowdOverlay !== null}
                 terminals={mapData.port_operations?.terminals_catalog ?? []}
                 focusBbox={focusGeometry.bbox}
                 focusPolygon={focusGeometry.polygon}
@@ -195,7 +229,7 @@ function DashboardView() {
       </main>
 
       <StatusBar
-        primaryCount={mapData?.primary.incident_count ?? 0}
+        primaryCount={mapPrimary?.incident_count ?? mapData?.primary.incident_count ?? 0}
         contextCount={mapData?.context.events.length ?? 0}
         engineEventCount={engineEvents?.active_count ?? 0}
         dataAgeSeconds={mapData?.age_seconds ?? null}
@@ -203,6 +237,8 @@ function DashboardView() {
         refreshIntervalMs={refreshIntervalMs}
         isLoading={isLoading}
         error={error}
+        crowdDemoActive={crowdOverlay !== null}
+        crowdCorridorName={crowdOverlay?.corridor_name ?? null}
       />
     </>
   )

@@ -262,6 +262,13 @@
   color: #b91c1c;
 }
 
+.crowd-demo__btn--active {
+  border-color: #f87171;
+  background: #fef2f2;
+  color: #991b1b;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35);
+}
+
 .language-switcher {
   display: flex;
   align-items: center;

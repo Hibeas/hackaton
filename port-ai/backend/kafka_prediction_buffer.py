@@ -66,8 +66,11 @@ class KafkaPredictionBuffer:
         self._index_loaded_at = now
         return indexed
 
-    def _prune(self, corridor_id: str) -> None:
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=self.retention_minutes)
+    def _prune(self, corridor_id: str, reference: datetime | None = None) -> None:
+        anchor = reference or datetime.now(timezone.utc)
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=timezone.utc)
+        cutoff = anchor - timedelta(minutes=self.retention_minutes)
         queue = self._samples[corridor_id]
         while queue and queue[0].observed_at < cutoff:
             queue.popleft()
@@ -148,17 +151,25 @@ class KafkaPredictionBuffer:
         self,
         corridor_id: str,
         horizon_minutes: int,
+        reference: datetime | None = None,
     ) -> dict[str, Any] | None:
-        self._prune(corridor_id)
+        self._prune(corridor_id, reference=reference)
         queue = self._samples.get(corridor_id)
         if not queue or len(queue) < MIN_SAMPLES_SHORT:
             return None
 
-        now = datetime.now(timezone.utc)
+        now = reference or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
         points: list[tuple[float, float]] = []
         for sample in queue:
+            if sample.observed_at > now:
+                continue
             age_min = (now - sample.observed_at).total_seconds() / 60.0
             points.append((age_min, sample.delay_sec))
+
+        if len(points) < MIN_SAMPLES_SHORT:
+            return None
 
         if len(points) < 2:
             predicted = points[-1][1]

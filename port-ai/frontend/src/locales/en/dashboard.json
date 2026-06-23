@@ -59,7 +59,8 @@
     "engineEvents": "Engine events",
     "tomtomIncidents": "TomTom",
     "ztmContext": "ZTM context",
-    "seconds": "{{count}} s"
+    "seconds": "{{count}} s",
+    "crowdDemo": "Crowd demo: {{corridor}}"
   },
   "engine": {
     "title": "Port Anomaly Engine",
@@ -258,6 +259,15 @@
       "low": "Low TIR demand",
       "idle": "Idle"
     }
+  },
+  "crowdDemo": {
+    "show": "Crowd on map",
+    "hide": "Hide crowd",
+    "loading": "Loading…",
+    "error": "Demo error",
+    "selectCorridor": "Select corridor",
+    "selectCorridorHint": "Click a corridor in the sidebar to show synthetic crowd",
+    "buttonHint": "Demo heatmap + incidents on {{corridor}} (120→960 s delay ramp)"
   },
   "spikeDemo": {
     "button": "Test spike",

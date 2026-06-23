@@ -210,10 +210,12 @@ class ObservationStore:
                 cursor.execute(
                     """
                     SELECT payload_json FROM corridor_observations
-                    WHERE corridor_id = %s AND observed_at >= %s
+                    WHERE corridor_id = %s
+                      AND observed_at >= %s
+                      AND observed_at <= %s
                     ORDER BY observed_at ASC
                     """,
-                    (corridor_id, since),
+                    (corridor_id, since, now),
                 )
                 rows = cursor.fetchall()
             return [self._payload_from_row(row[0]) for row in rows]
@@ -222,12 +224,52 @@ class ObservationStore:
             rows = connection.execute(
                 """
                 SELECT payload_json FROM corridor_observations
-                WHERE corridor_id = ? AND observed_at >= ?
+                WHERE corridor_id = ?
+                  AND observed_at >= ?
+                  AND observed_at <= ?
                 ORDER BY observed_at ASC
                 """,
-                (corridor_id, since.isoformat()),
+                (corridor_id, since.isoformat(), now.isoformat()),
             ).fetchall()
         return [json.loads(row["payload_json"]) for row in rows]
+
+    def list_corridor_timeline(
+        self,
+        corridor_id: str,
+        limit: int = 5000,
+    ) -> list[tuple[datetime, dict[str, Any]]]:
+        """All observations for a corridor, oldest first."""
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT observed_at, payload_json FROM corridor_observations
+                    WHERE corridor_id = %s
+                    ORDER BY observed_at ASC
+                    LIMIT %s
+                    """,
+                    (corridor_id, limit),
+                )
+                rows = cursor.fetchall()
+            return [
+                (parse_observed_at(row[0]), self._payload_from_row(row[1]))
+                for row in rows
+            ]
+
+        with self._sqlite_connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT observed_at, payload_json FROM corridor_observations
+                WHERE corridor_id = ?
+                ORDER BY observed_at ASC
+                LIMIT ?
+                """,
+                (corridor_id, limit),
+            ).fetchall()
+        return [
+            (parse_observed_at(row["observed_at"]), json.loads(row["payload_json"]))
+            for row in rows
+        ]
 
     def snapshot_at_offset(
         self,

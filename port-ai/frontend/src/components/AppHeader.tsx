@@ -10,6 +10,8 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { CorridorSpikeDemoButton } from './CorridorSpikeDemoButton'
+import { CrowdMapDemoButton } from './CrowdMapDemoButton'
+import type { CrowdMapOverlayResponse } from '../types/traffic'
 
 interface AppHeaderProps {
   ports: PortConfig[]
@@ -18,6 +20,8 @@ interface AppHeaderProps {
   selectedCorridorId: string | null
   selectedCorridorName: string | null
   onSpikeDemoComplete?: () => void
+  crowdOverlay: CrowdMapOverlayResponse | null
+  onCrowdOverlayChange: (overlay: CrowdMapOverlayResponse | null) => void
   dashboardMode: DashboardMode
   onDashboardModeChange: (mode: DashboardMode) => void
   forecastHorizon: number
@@ -37,6 +41,8 @@ export function AppHeader({
   selectedCorridorId,
   selectedCorridorName,
   onSpikeDemoComplete,
+  crowdOverlay,
+  onCrowdOverlayChange,
 }: AppHeaderProps) {
   const { t } = useTranslation()
   const { t: tAuth } = useTranslation('auth')
@@ -103,6 +109,12 @@ export function AppHeader({
       </div>
 
       <div className="app-header__actions">
+        <CrowdMapDemoButton
+          selectedCorridorId={selectedCorridorId}
+          selectedCorridorName={selectedCorridorName}
+          activeOverlay={crowdOverlay}
+          onOverlayChange={onCrowdOverlayChange}
+        />
         <CorridorSpikeDemoButton
           selectedCorridorId={selectedCorridorId}
           selectedCorridorName={selectedCorridorName}
