@@ -1,5 +1,6 @@
 import requests
 import folium
+import time
 from datetime import datetime, timedelta, timezone
 
 try:
@@ -23,6 +24,7 @@ PREDICTION_HOURS = (3, 4)
 # Ile najgorszych korków analizować pod kątem objazdu (limit zapytań API)
 MAX_INCIDENT_BYPASSES = 15
 MIN_DELAY_FOR_BYPASS_SEC = 45
+REFRESH_INTERVAL_SEC = 30
 
 INCIDENT_FIELDS = (
     "{incidents{type,geometry{type,coordinates},properties{"
@@ -431,6 +433,30 @@ def format_duration(seconds):
     return f"{minutes // 60} h {minutes % 60} min"
 
 
+def add_auto_refresh_meta(m, interval=REFRESH_INTERVAL_SEC):
+    m.get_root().html.add_child(
+        folium.Element(f'<meta http-equiv="refresh" content="{interval}">')
+    )
+
+
+def build_fast_report(api_key):
+    present = get_traffic_incidents(api_key, BBOX_TROJMIASTO, "present")
+    present_list = (present or {}).get("incidents") or []
+    direct = calculate_routes(api_key, ROUTE_ORIGIN, ROUTE_DESTINATION, depart_at="now", max_alternatives=0)
+    direct_routes = (direct or {}).get("routes") or []
+    return {
+        "present_incidents": present_list,
+        "future_incidents": [],
+        "routes_now": direct_routes,
+        "predictions": {},
+        "bypass": {
+            "recommend_alt": False,
+            "text": "Szybki start mapy. Pełne dane i objazdy pojawią się wkrótce.",
+        },
+        "incident_bypasses": {},
+    }
+
+
 def recommend_bypass(main_route, all_routes, present_incidents):
     """Porównuje trasę główną z alternatywą i sugeruje objazd."""
     if not all_routes:
@@ -443,14 +469,20 @@ def recommend_bypass(main_route, all_routes, present_incidents):
 
     best = main
     best_idx = 0
+    main_delay = main_summary.get("trafficDelayInSeconds", 0)
+    main_score = main_summary.get("travelTimeInSeconds", 0) + main_delay * 0.4
+    best_score = main_score
     for idx, route in enumerate(all_routes[1:], start=1):
-        if route["summary"]["travelTimeInSeconds"] < best["summary"]["travelTimeInSeconds"]:
+        summary = route["summary"]
+        score = summary.get("travelTimeInSeconds", 0) + summary.get("trafficDelayInSeconds", 0) * 0.4
+        if score < best_score:
             best = route
             best_idx = idx
+            best_score = score
 
-    main_delay = main_summary.get("trafficDelayInSeconds", 0)
     best_delay = best["summary"].get("trafficDelayInSeconds", 0)
     time_saved = main_summary.get("travelTimeInSeconds", 0) - best["summary"].get("travelTimeInSeconds", 0)
+    delay_saved = main_delay - best_delay
 
     causes = []
     for inc in main_near[:3]:
@@ -462,7 +494,7 @@ def recommend_bypass(main_route, all_routes, present_incidents):
 
     cause_text = "; ".join(causes) if causes else "typowy szczyt / zator na głównej trasie"
 
-    if best_idx == 0 or time_saved <= 60:
+    if best_idx == 0 or (time_saved <= 60 and delay_saved <= 90):
         return {
             "recommend_alt": False,
             "text": (
@@ -654,9 +686,11 @@ def build_prediction_report(api_key):
     }
 
 
-def visualize_prediction_map(report):
+def visualize_prediction_map(report, quick=False):
     """Mapa: incydenty, prognoza +3/+4 h, trasa główna vs objazd."""
     m = folium.Map(location=[54.45, 18.55], zoom_start=11)
+    add_auto_refresh_meta(m)
+    last_updated = datetime.now(poland_timezone()).strftime("%Y-%m-%d %H:%M:%S")
 
     n_now, n_bypass = add_incidents_to_map(
         m,
@@ -705,15 +739,17 @@ def visualize_prediction_map(report):
         )
     pred_block = "<br>".join(pred_lines) if pred_lines else "Brak prognozy trasy."
 
+    quick_note = "<br><em>Szybki start mapy. Pełne dane i objazdy pojawią się wkrótce.</em>" if quick else ""
     legend = f"""
     <div style="position:fixed;bottom:30px;left:10px;z-index:9999;background:white;
                 padding:12px;border:2px solid #333;border-radius:8px;max-width:420px;font-size:13px;">
         <b>Traffic Intelligence — Trójmiasto</b><br><br>
+        <b>Ostatnia aktualizacja:</b> {last_updated}<br>
         <b>Incydenty:</b> teraz {n_now}, planowane {n_future}, objazdy {n_bypass}<br>
         <b>Prognoza trasy Gdańsk→Gdynia:</b><br>{pred_block}<br><br>
         <b>Objazd (cała trasa):</b> {bypass_text}<br><br>
         <i>Kliknij <b>czerwoną linię</b> korku — zobaczysz przyczynę i rekomendowany objazd.</i><br>
-        <i>Zielona przerywana linia = objazd wokół wybranego korku.</i>
+        <i>Zielona przerywana linia = objazd wokół wybranego korku.</i>{quick_note}
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend))
@@ -744,9 +780,27 @@ def visualize_prediction_map(report):
     print(f"Raport tekstowy: {report_file}")
 
 
+def run_refresh_loop(api_key):
+    print("Tworzę szybką startową wersję mapy...")
+    quick_report = build_fast_report(api_key)
+    visualize_prediction_map(quick_report, quick=True)
+    print(f"Mapa została zapisana. Odświeżam dane co {REFRESH_INTERVAL_SEC} sekund.")
+
+    try:
+        while True:
+            start = time.time()
+            report = build_prediction_report(api_key)
+            visualize_prediction_map(report)
+            elapsed = time.time() - start
+            wait = max(REFRESH_INTERVAL_SEC - elapsed, 0)
+            print(f"Odświeżanie zakończone. Kolejna aktualizacja za {int(wait)} s.")
+            time.sleep(wait)
+    except KeyboardInterrupt:
+        print("Zatrzymano odświeżanie na życzenie użytkownika.")
+
+
 if __name__ == "__main__":
     if not TOMTOM_API_KEY or TOMTOM_API_KEY == "TUTAJ_WKLEJ_SWOJ_KLUCZ":
         print("BŁĄD: Ustaw TOMTOM_API_KEY w kodzie.")
     else:
-        report = build_prediction_report(TOMTOM_API_KEY)
-        visualize_prediction_map(report)
+        run_refresh_loop(TOMTOM_API_KEY)
