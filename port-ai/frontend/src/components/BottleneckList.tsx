@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { BottleneckItem } from '../types/engine'
+import { formatDuration } from '../utils/trafficFormat'
 
 interface BottleneckListProps {
   items: BottleneckItem[]
@@ -28,7 +29,9 @@ export function BottleneckList({ items, selectedCorridorId, onSelect }: Bottlene
             <span className="bottleneck-item__rank">#{index + 1}</span>
             <span className="bottleneck-item__body">
               <strong>{item.corridor_name}</strong>
-              <span>{item.port_name} · {t('engine.stress')} {item.stress_score}</span>
+              <span>
+                {item.port_name} · {formatDuration(item.avg_delay_sec)} {t('engine.delayShort')}
+              </span>
             </span>
           </button>
         </li>

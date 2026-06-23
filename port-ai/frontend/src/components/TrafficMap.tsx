@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   CircleMarker,
   GeoJSON,
@@ -70,9 +70,9 @@ function CorridorHighlight({
       <Polygon
         positions={polygon}
         pathOptions={{
-          color: '#f59e0b',
+          color: '#475569',
           weight: 2,
-          fillOpacity: 0.1,
+          fillOpacity: 0.08,
           dashArray: '6 4',
         }}
       />
@@ -90,80 +90,12 @@ function CorridorHighlight({
         [bbox.max_lat, bbox.max_lon],
       ]}
       pathOptions={{
-        color: '#f59e0b',
+        color: '#475569',
         weight: 2,
-        fillOpacity: 0.1,
+        fillOpacity: 0.08,
         dashArray: '6 4',
       }}
     />
-  )
-}
-
-function MapViewControls() {
-  const map = useMap()
-  const { t } = useTranslation()
-
-  return (
-    <div className="map-controls">
-      <button type="button" onClick={() => map.setView([54.52, 18.53], 13)}>
-        {t('map.zoomGdynia')}
-      </button>
-      <button type="button" onClick={() => map.setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM)}>
-        {t('map.zoomRegion')}
-      </button>
-    </div>
-  )
-}
-
-function HeatmapControls({
-  showFlowTiles,
-  showIncidentHeat,
-  showTerminals,
-  onToggleFlowTiles,
-  onToggleIncidentHeat,
-  onToggleTerminals,
-  pointCount,
-  terminalCount,
-}: {
-  showFlowTiles: boolean
-  showIncidentHeat: boolean
-  showTerminals: boolean
-  onToggleFlowTiles: () => void
-  onToggleIncidentHeat: () => void
-  onToggleTerminals: () => void
-  pointCount: number
-  terminalCount: number
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <div className="heatmap-controls">
-      <button
-        type="button"
-        className={showFlowTiles ? 'heatmap-controls__btn heatmap-controls__btn--active' : 'heatmap-controls__btn'}
-        onClick={onToggleFlowTiles}
-      >
-        {t('map.heatmapFlowTiles')}
-      </button>
-      <button
-        type="button"
-        className={
-          showIncidentHeat ? 'heatmap-controls__btn heatmap-controls__btn--active' : 'heatmap-controls__btn'
-        }
-        onClick={onToggleIncidentHeat}
-      >
-        {t('map.heatmapIncidents', { count: pointCount })}
-      </button>
-      <button
-        type="button"
-        className={
-          showTerminals ? 'heatmap-controls__btn heatmap-controls__btn--active' : 'heatmap-controls__btn'
-        }
-        onClick={onToggleTerminals}
-      >
-        {t('map.terminalsLayer', { count: terminalCount })}
-      </button>
-    </div>
   )
 }
 
@@ -340,10 +272,6 @@ export function TrafficMap({
   focusBbox,
   focusPolygon,
 }: TrafficMapProps) {
-  const [showFlowTiles, setShowFlowTiles] = useState(true)
-  const [showIncidentHeat, setShowIncidentHeat] = useState(true)
-  const [showTerminals, setShowTerminals] = useState(true)
-
   const visibleTerminals = useMemo(() => filterVisibleTerminals(terminals), [terminals])
 
   const { segments, vehicles } = useMemo(
@@ -358,39 +286,27 @@ export function TrafficMap({
         zoom={MAP_DEFAULT_ZOOM}
         className="traffic-map"
         scrollWheelZoom
+        zoomControl={false}
       >
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {showFlowTiles ? (
-          <TileLayer
-            url={flowTileUrl}
-            opacity={0.62}
-            zIndex={450}
-            maxNativeZoom={18}
-            maxZoom={22}
-          />
-        ) : null}
-        <TomTomHeatmapLayer points={heatmapPoints} enabled={showIncidentHeat} />
-        {showTerminals ? <TerminalMarkers terminals={visibleTerminals} /> : null}
+        <TileLayer
+          url={flowTileUrl}
+          opacity={0.62}
+          zIndex={450}
+          maxNativeZoom={18}
+          maxZoom={22}
+        />
+        <TomTomHeatmapLayer points={heatmapPoints} enabled />
+        <TerminalMarkers terminals={visibleTerminals} />
         <ContextSegmentLayer segments={segments} />
         <ContextVehicleMarkers vehicles={vehicles} />
         <IncidentLayer incidents={primary.events} />
         <CorridorHighlight bbox={focusBbox} polygon={focusPolygon} />
         <FlyToBbox bbox={focusBbox} />
-        <MapViewControls />
       </MapContainer>
-      <HeatmapControls
-        showFlowTiles={showFlowTiles}
-        showIncidentHeat={showIncidentHeat}
-        showTerminals={showTerminals}
-        onToggleFlowTiles={() => setShowFlowTiles((value) => !value)}
-        onToggleIncidentHeat={() => setShowIncidentHeat((value) => !value)}
-        onToggleTerminals={() => setShowTerminals((value) => !value)}
-        pointCount={heatmapPoints.length}
-        terminalCount={visibleTerminals.length}
-      />
     </div>
   )
 }

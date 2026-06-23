@@ -105,3 +105,37 @@ export interface CorridorsResponse {
   corridors: CorridorSnapshot[]
   related_events: EngineEvent[]
 }
+
+export type DelayForecastMethod =
+  | 'kafka_trend'
+  | 'observation_trend'
+  | 'ml_historical'
+
+export type DelayForecastConfidence = 'high' | 'medium' | 'low'
+
+export interface DelayForecastItem {
+  corridor_id: string
+  port_id: string
+  corridor_name?: string
+  horizon_minutes: number
+  predicted_delay_sec: number
+  method: DelayForecastMethod
+  confidence: DelayForecastConfidence
+  samples_in_buffer?: number
+}
+
+export interface KafkaBufferStatus {
+  retention_minutes: number
+  corridors_tracked: number
+  samples_total: number
+  messages_ingested: number
+}
+
+export interface DelayForecastResponse {
+  generated_at: string
+  horizons: number[]
+  short_term_max_minutes: number
+  forecasts: DelayForecastItem[]
+  kafka_buffer: KafkaBufferStatus
+  ml_enabled: boolean
+}

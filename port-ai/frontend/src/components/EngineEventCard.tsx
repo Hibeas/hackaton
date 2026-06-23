@@ -11,11 +11,41 @@ interface EngineEventCardProps {
   event: EngineEvent
   isSelected: boolean
   onSelect: () => void
+  variant?: 'full' | 'compact'
 }
 
-export function EngineEventCard({ event, isSelected, onSelect }: EngineEventCardProps) {
+export function EngineEventCard({
+  event,
+  isSelected,
+  onSelect,
+  variant = 'full',
+}: EngineEventCardProps) {
   const { t } = useTranslation()
   const dispatchColor = DISPATCH_COLORS[event.dispatch_impact] ?? DISPATCH_COLORS.MONITOR
+
+  if (variant === 'compact') {
+    return (
+      <button
+        type="button"
+        className={`alert-row${isSelected ? ' alert-row--selected' : ''}`}
+        onClick={onSelect}
+      >
+        <span className="alert-row__severity" style={{ color: dispatchColor }}>
+          {event.severity}
+        </span>
+        <span className="alert-row__body">
+          <strong>{event.roadSegment}</strong>
+          <span>{event.eventType}</span>
+        </span>
+        <span
+          className="alert-row__dispatch"
+          style={{ backgroundColor: `${dispatchColor}22`, color: dispatchColor }}
+        >
+          {t(`engine.dispatchImpact.${event.dispatch_impact}`)}
+        </span>
+      </button>
+    )
+  }
 
   return (
     <article

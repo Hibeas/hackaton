@@ -14,7 +14,7 @@ Event types align with the product spec:
 
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from corridor_service import corridor_priority_multiplier
@@ -27,15 +27,65 @@ EVENT_SPEED_DROP = "Spadek Prędkości"
 EVENT_CONGESTION = "Kongestia"
 EVENT_PERSISTENT = "Trwałe Wąskie Gardło"
 
-SPEED_DROP_RAPID_PCT = 25.0
-SPEED_DROP_MODERATE_PCT = 18.0
-CONGESTION_GROWTH_DELTA = 0.20
-DELAY_ESCALATION_SEC = 180
-INCIDENT_SURGE_COUNT = 3
+# Demo-tuned thresholds — reduce ZTM GPS noise and severity inflation.
+SPEED_DROP_RAPID_PCT = 40.0
+SPEED_DROP_MODERATE_PCT = 28.0
+CONGESTION_GROWTH_DELTA = 0.25
+RAPID_DELAY_ESCALATION_SEC = 300
+RAPID_DELAY_SOLO_SEC = 450
+RAPID_INCIDENT_SURGE_COUNT = 4
+RAPID_INCIDENT_MIN_DELAY_SEC = 120
+RAPID_CONG_MIN = 0.35
+RAPID_MIN_CONFIRMING_SIGNALS = 2
+RAPID_BASE_RAW_SCORE = 38
+RAPID_CRISIS_INCIDENTS = 6
+RAPID_CRISIS_DELAY_SEC = 250
+EVENT_COOLDOWN_MINUTES = 10
+COOLDOWN_REASON_CODES = frozenset({"rapid_deterioration", "speed_drop"})
 PERSISTENT_MIN_MINUTES = 18
 PERSISTENT_CONGESTION_RATIO = 0.35
 PERSISTENT_MAX_SPEED = 22.0
 PERSISTENT_MIN_DELAY = 120
+PERSISTENT_MIN_TOMTOM_DELAY_SEC = 90
+TOMTOM_CALM_MAX_DELAY_SEC = 90
+GATE_PEAK_DEMAND_RATIO = 0.65
+DISPATCH_HOLD_MIN_SEVERITY = 72
+DISPATCH_HOLD_MIN_DELAY_SEC = 480
+DISPATCH_CAUTION_MIN_SEVERITY = 55
+# ZTM persistence contributes at most this many raw-score points (TomTom-primary).
+PERSISTENT_ZTM_SCORE_MAX = 8
+PERSISTENT_ZTM_RATIO_SCALE = 10
+CONGESTION_ZTM_SCORE_MAX = 8
+CONGESTION_ZTM_RATIO_SCALE = 12
+
+
+def _tomtom_stress(metrics: dict[str, Any]) -> tuple[int, int]:
+    return (
+        int(metrics.get("incident_count") or 0),
+        int(metrics.get("total_delay_sec") or 0),
+    )
+
+
+def _tomtom_effective_delay(metrics: dict[str, Any]) -> int:
+    delay, max_delay = _tomtom_stress(metrics)[1], int(metrics.get("max_delay_sec") or 0)
+    return max(delay, max_delay)
+
+
+def _has_operational_tomtom_impact(metrics: dict[str, Any]) -> bool:
+    """Incidents in bbox only count when TomTom reports meaningful delay."""
+    incidents, _ = _tomtom_stress(metrics)
+    effective_delay = _tomtom_effective_delay(metrics)
+    if effective_delay >= 60:
+        return True
+    if incidents >= 2 and effective_delay >= 15:
+        return True
+    if incidents >= 5:
+        return True
+    return False
+
+
+def _is_tomtom_calm(metrics: dict[str, Any]) -> bool:
+    return not _has_operational_tomtom_impact(metrics)
 
 
 def _metric(snapshot: dict[str, Any], key: str) -> float | None:
@@ -60,6 +110,7 @@ def _pct_rise(current: float | None, previous: float | None) -> float | None:
 class AnomalyEngine:
     def __init__(self, store: ObservationStore) -> None:
         self.store = store
+        self._cooldown_until: dict[str, datetime] = {}
 
     def evaluate(self, snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
@@ -68,11 +119,34 @@ class AnomalyEngine:
         for snapshot in snapshots:
             corridor_id = snapshot["corridor_id"]
             detected = self._detect_for_corridor(snapshot, corridor_id, reference)
-            if detected:
+            if detected and not self._is_on_cooldown(
+                corridor_id, detected["reason_code"], reference
+            ):
+                self._mark_cooldown(corridor_id, detected["reason_code"], reference)
                 events.append(detected)
 
         events.sort(key=lambda item: item["severity"], reverse=True)
         return events
+
+    def _cooldown_key(self, corridor_id: str, reason_code: str) -> str:
+        return f"{corridor_id}|{reason_code}"
+
+    def _is_on_cooldown(
+        self, corridor_id: str, reason_code: str, reference: datetime
+    ) -> bool:
+        if reason_code not in COOLDOWN_REASON_CODES:
+            return False
+        until = self._cooldown_until.get(self._cooldown_key(corridor_id, reason_code))
+        return until is not None and reference < until
+
+    def _mark_cooldown(
+        self, corridor_id: str, reason_code: str, reference: datetime
+    ) -> None:
+        if reason_code not in COOLDOWN_REASON_CODES:
+            return
+        self._cooldown_until[self._cooldown_key(corridor_id, reason_code)] = (
+            reference + timedelta(minutes=EVENT_COOLDOWN_MINUTES)
+        )
 
     def bottlenecks_last_hour(self) -> list[dict[str, Any]]:
         """Rank corridors by cumulative stress over the last 60 minutes."""
@@ -95,8 +169,22 @@ class AnomalyEngine:
 
                 avg_delay = sum(delays) / len(delays)
                 max_delay = max(delays)
+                max_peak_delay = max(
+                    int(_metric(item, "max_delay_sec") or _metric(item, "total_delay_sec") or 0)
+                    for item in history
+                )
                 avg_incidents = sum(incidents) / len(incidents)
                 min_speed = min(speeds) if speeds else None
+
+                if max_peak_delay < 45 and avg_delay < 25:
+                    continue
+
+                recent = history[-6:]
+                if not any(
+                    _has_operational_tomtom_impact(item.get("metrics") or {})
+                    for item in recent
+                ):
+                    continue
 
                 score = min(
                     100,
@@ -165,7 +253,31 @@ class AnomalyEngine:
             return None
 
         best = max(candidates, key=lambda item: item["_raw_score"])
+        if self._should_suppress_false_positive(current, best):
+            return None
         return self._finalize_event(current, best, past_15, past_30)
+
+    def _should_suppress_false_positive(
+        self,
+        current: dict[str, Any],
+        detection: dict[str, Any],
+    ) -> bool:
+        """TomTom-primary: ZTM-only signals without live incidents are not port anomalies."""
+        metrics = current.get("metrics") or {}
+        if not _has_operational_tomtom_impact(metrics):
+            return True
+
+        incidents, delay = _tomtom_stress(metrics)
+        demand = metrics.get("demand_ratio")
+        if (
+            demand is not None
+            and demand >= GATE_PEAK_DEMAND_RATIO
+            and delay < 120
+            and incidents < 3
+        ):
+            return True
+
+        return False
 
     def _detect_rapid_deterioration(
         self,
@@ -190,22 +302,41 @@ class AnomalyEngine:
 
         cur_inc = int(_metric(current, "incident_count") or 0)
         prev_inc = int(_metric(past_15, "incident_count") or 0)
+        inc_surge = cur_inc - prev_inc
 
+        signals: list[str] = []
+        if speed_drop is not None and speed_drop >= SPEED_DROP_RAPID_PCT:
+            signals.append("speed")
+        if delay_jump >= RAPID_DELAY_ESCALATION_SEC:
+            signals.append("delay")
+        if (
+            cong_jump is not None
+            and cong_jump >= CONGESTION_GROWTH_DELTA
+            and cur_cong is not None
+            and cur_cong >= RAPID_CONG_MIN
+        ):
+            signals.append("congestion")
+        if inc_surge >= RAPID_INCIDENT_SURGE_COUNT and cur_delay >= RAPID_INCIDENT_MIN_DELAY_SEC:
+            signals.append("incidents")
+
+        # TomTom-primary: require corroboration; ZTM speed alone is too noisy for rapid alerts.
         triggered = (
-            (speed_drop is not None and speed_drop >= SPEED_DROP_RAPID_PCT)
-            or delay_jump >= DELAY_ESCALATION_SEC
-            or (cong_jump is not None and cong_jump >= CONGESTION_GROWTH_DELTA and cur_cong is not None and cur_cong >= 0.3)
-            or (cur_inc - prev_inc >= INCIDENT_SURGE_COUNT and cur_delay >= 90)
+            len(signals) >= RAPID_MIN_CONFIRMING_SIGNALS
+            or delay_jump >= RAPID_DELAY_SOLO_SEC
+            or (cur_inc >= RAPID_CRISIS_INCIDENTS and cur_delay >= RAPID_CRISIS_DELAY_SEC)
         )
         if not triggered:
             return None
 
-        raw = 55
-        if speed_drop:
-            raw += min(25, speed_drop * 0.5)
-        raw += min(20, delay_jump / 15)
-        if cong_jump:
-            raw += min(10, cong_jump * 30)
+        raw = RAPID_BASE_RAW_SCORE
+        if speed_drop and "speed" in signals:
+            raw += min(18, speed_drop * 0.35)
+        if "delay" in signals or delay_jump >= RAPID_DELAY_ESCALATION_SEC:
+            raw += min(15, delay_jump / 20)
+        if cong_jump and "congestion" in signals:
+            raw += min(5, cong_jump * 12)
+        if "incidents" in signals:
+            raw += min(10, inc_surge * 2)
 
         return {
             "event_type": EVENT_RAPID,
@@ -227,6 +358,10 @@ class AnomalyEngine:
         if cur_speed is None:
             return None
 
+        metrics = current.get("metrics") or {}
+        if not _has_operational_tomtom_impact(metrics):
+            return None
+
         for past, window in ((past_15, 15), (past_30, 30), (past_60, 60)):
             if not past:
                 continue
@@ -236,7 +371,7 @@ class AnomalyEngine:
                 return {
                     "event_type": EVENT_SPEED_DROP,
                     "reason_code": "speed_drop",
-                    "_raw_score": 35 + min(35, drop * 0.9),
+                    "_raw_score": 30 + min(28, drop * 0.75),
                     "delta_speed_pct": round(drop, 1),
                     "window_minutes": window,
                 }
@@ -251,6 +386,9 @@ class AnomalyEngine:
         cur_cong = _metric(current, "congestion_ratio")
         cur_inc = int(_metric(current, "incident_count") or 0)
         cur_delay = int(_metric(current, "total_delay_sec") or 0)
+
+        if not _has_operational_tomtom_impact(current.get("metrics") or {}):
+            return None
 
         if cur_cong is None and cur_inc < 2:
             return None
@@ -267,14 +405,18 @@ class AnomalyEngine:
             inc_growth = cur_inc - prev_inc
 
         triggered = (
-            (growth_15 is not None and growth_15 >= CONGESTION_GROWTH_DELTA and cur_cong >= 0.25)
-            or (inc_growth is not None and inc_growth >= 2 and cur_delay >= 60)
-            or (cur_inc >= 4 and cur_delay >= 150)
+            (growth_15 is not None and growth_15 >= CONGESTION_GROWTH_DELTA and cur_cong >= 0.30)
+            or (inc_growth is not None and inc_growth >= 3 and cur_delay >= 90)
+            or (cur_inc >= 5 and cur_delay >= 180)
         )
         if not triggered:
             return None
 
-        raw = 40 + min(25, (cur_cong or 0) * 40) + min(20, cur_delay / 12)
+        raw = (
+            28
+            + min(CONGESTION_ZTM_SCORE_MAX, (cur_cong or 0) * CONGESTION_ZTM_RATIO_SCALE)
+            + min(22, cur_delay / 18)
+        )
         return {
             "event_type": EVENT_CONGESTION,
             "reason_code": "congestion_growth",
@@ -308,17 +450,35 @@ class AnomalyEngine:
 
         ratio = congested_samples / len(history_30)
         duration_estimate = int(len(history_30) * 0.5)
+        metrics = current.get("metrics") or {}
+        cur_delay = _tomtom_effective_delay(metrics)
+        has_tomtom = _has_operational_tomtom_impact(metrics)
 
         triggered = (
-            ratio >= 0.55
-            or slow_samples / len(history_30) >= 0.55
-            or high_delay_samples / len(history_30) >= 0.5
+            high_delay_samples / len(history_30) >= 0.5
+            or (
+                slow_samples / len(history_30) >= 0.60
+                and has_tomtom
+                and cur_delay >= 150
+            )
+            or (
+                ratio >= 0.70
+                and has_tomtom
+                and cur_delay >= 240
+            )
         )
         if not triggered or duration_estimate < PERSISTENT_MIN_MINUTES / 2:
             return None
 
-        cur_delay = int(_metric(current, "total_delay_sec") or 0)
-        raw = 45 + min(25, ratio * 30) + min(20, cur_delay / 15)
+        if not has_tomtom:
+            return None
+        delay_score = min(28, cur_delay / 18) + min(14, max(0, cur_delay - 540) / 35)
+        raw = (
+            26
+            + min(PERSISTENT_ZTM_SCORE_MAX, ratio * PERSISTENT_ZTM_RATIO_SCALE)
+            + delay_score
+            + min(12, max(0, duration_estimate - 25) * 0.5)
+        )
         return {
             "event_type": EVENT_PERSISTENT,
             "reason_code": "persistent_bottleneck",
@@ -331,21 +491,20 @@ class AnomalyEngine:
         """Cold-start fallback when history is too short for trend detection."""
         delay = int(_metric(current, "total_delay_sec") or 0)
         inc = int(_metric(current, "incident_count") or 0)
-        cong = _metric(current, "congestion_ratio")
         speed = _metric(current, "avg_speed_kmh")
 
-        if delay >= 350 or (inc >= 5 and delay >= 120):
+        if delay >= 450 or (inc >= 6 and delay >= 180):
             return {
                 "event_type": EVENT_CONGESTION,
                 "reason_code": "absolute_stress",
-                "_raw_score": 48 + min(35, delay / 12),
+                "_raw_score": 42 + min(28, delay / 15),
                 "window_minutes": 0,
             }
-        if speed is not None and speed <= 14 and (cong or 0) >= 0.45:
+        if speed is not None and speed <= 12 and delay >= 150:
             return {
                 "event_type": EVENT_SPEED_DROP,
                 "reason_code": "absolute_slowdown",
-                "_raw_score": 42 + min(30, (25 - speed) * 2),
+                "_raw_score": 32 + min(20, (22 - speed) * 1.6) + min(10, delay / 30),
                 "window_minutes": 0,
             }
         return None
@@ -384,7 +543,7 @@ class AnomalyEngine:
             "confidence": round(confidence, 2),
             "summary": summary,
             "port_context": port_context,
-            "dispatch_impact": self._dispatch_impact(severity, port_context),
+            "dispatch_impact": self._dispatch_impact(severity, port_context, metrics),
             "details": {
                 "window_minutes": detection.get("window_minutes"),
                 "delta_speed_pct": detection.get("delta_speed_pct"),
@@ -407,15 +566,15 @@ class AnomalyEngine:
         has_ztm = metrics.get("congestion_ratio") is not None or metrics.get("avg_speed_kmh") is not None
         history_depth = sum(1 for item in (past_15, past_30) if item is not None)
 
-        score = 0.45
+        score = 0.50
         if has_tomtom:
-            score += 0.25
+            score += 0.30
         if has_ztm:
-            score += 0.15
-        if has_tomtom and has_ztm and (metrics.get("congestion_ratio") or 0) >= 0.2:
-            score += 0.12
+            score += 0.06
+        if has_tomtom and has_ztm and (metrics.get("congestion_ratio") or 0) >= 0.35:
+            score += 0.05
         score += history_depth * 0.05
-        return min(0.98, score)
+        return min(0.95, score)
 
     def _port_context_label(self, metrics: dict[str, Any]) -> str:
         demand = metrics.get("demand_ratio")
@@ -427,12 +586,18 @@ class AnomalyEngine:
             return "low_port_demand"
         return "moderate_port_demand"
 
-    def _dispatch_impact(self, severity: int, port_context: str) -> str:
-        if severity >= 75:
+    def _dispatch_impact(
+        self,
+        severity: int,
+        port_context: str,
+        metrics: dict[str, Any],
+    ) -> str:
+        delay = _tomtom_effective_delay(metrics)
+        if severity >= DISPATCH_HOLD_MIN_SEVERITY and delay >= DISPATCH_HOLD_MIN_DELAY_SEC:
             return "HOLD_DISPATCH"
-        if severity >= 55:
+        if severity >= DISPATCH_CAUTION_MIN_SEVERITY:
             return "CAUTION"
-        if severity >= 40 and port_context == "expected_gate_peak":
+        if severity >= 45 and port_context == "expected_gate_peak" and delay >= 240:
             return "CAUTION"
         return "MONITOR"
 

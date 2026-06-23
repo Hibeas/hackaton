@@ -1,4 +1,5 @@
 import type { PortOperationsPayload } from './portOps'
+import type { DelayForecastResponse } from './engine'
 
 export type TrafficStatus = 'CRITICAL' | 'CONGESTION' | 'CLEAR'
 
@@ -81,6 +82,7 @@ export interface MapDataResponse {
   cached_at: string | null
   age_seconds: number | null
   refresh_interval_seconds: number
+  delay_forecasts?: DelayForecastResponse
   sources: Record<string, unknown>
 }
 

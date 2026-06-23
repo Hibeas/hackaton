@@ -38,7 +38,11 @@ from port_events import (
     build_port_summary,
     build_terminals_catalog,
 )
+from hybrid_delay_forecaster import DEFAULT_HORIZONS, build_forecast_response
+from kafka_prediction_buffer import kafka_consumer_loop, kafka_prediction_buffer
 from tomtom_service import TOMTOM_API_KEY, build_heatmap_points, collect_tomtom_events
+from traffic_ml_predictor import load_model, ml_enabled, model_path, preload_model, reset_model
+from voice_call_service import is_voice_call_configured, make_automated_voice_call, voice_call_mode
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -61,6 +65,7 @@ KAFKA_PUBLISH_ON_REFRESH = os.environ.get("KAFKA_PUBLISH_ON_REFRESH", "true").lo
 }
 
 kafka_producer: AIOKafkaProducer | None = None
+kafka_consumer_task: asyncio.Task[None] | None = None
 cache_refresh_task: asyncio.Task[None] | None = None
 gdynia_watch_task: asyncio.Task[None] | None = None
 port_data_refresh_task: asyncio.Task[None] | None = None
@@ -116,6 +121,10 @@ class TrafficCache:
 
             if KAFKA_PUBLISH_ON_REFRESH:
                 await publish_events_to_kafka(primary_events + context_events)
+                await publish_corridor_snapshots_to_kafka(snapshots)
+
+            for snapshot in snapshots:
+                kafka_prediction_buffer.ingest_snapshot(snapshot)
 
             async with self._lock:
                 self.primary_events = primary_events
@@ -221,7 +230,7 @@ async def port_data_refresh_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global kafka_producer, cache_refresh_task, gdynia_watch_task, port_data_refresh_task
+    global kafka_producer, kafka_consumer_task, cache_refresh_task, gdynia_watch_task, port_data_refresh_task
     producer = AIOKafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         value_serializer=lambda value: json.dumps(value, ensure_ascii=False).encode("utf-8"),
@@ -246,9 +255,19 @@ async def lifespan(_: FastAPI):
     except Exception as exc:
         logger.warning("Initial cache refresh on startup failed: %s", exc)
 
+    try:
+        loaded = await asyncio.to_thread(preload_model)
+        if loaded is None and ml_enabled():
+            logger.warning("Traffic ML model failed to preload from %s", model_path())
+        else:
+            logger.info("Traffic ML model preloaded: %s", loaded is not None)
+    except Exception as exc:
+        logger.warning("Traffic ML preload failed: %s", exc)
+
     cache_refresh_task = asyncio.create_task(cache_refresh_loop())
     gdynia_watch_task = asyncio.create_task(gdynia_watch_loop())
     port_data_refresh_task = asyncio.create_task(port_data_refresh_loop())
+    kafka_consumer_task = asyncio.create_task(kafka_consumer_loop())
     try:
         yield
     finally:
@@ -256,6 +275,7 @@ async def lifespan(_: FastAPI):
             ("cache_refresh_task", cache_refresh_task),
             ("gdynia_watch_task", gdynia_watch_task),
             ("port_data_refresh_task", port_data_refresh_task),
+            ("kafka_consumer_task", kafka_consumer_task),
         ):
             if task is not None:
                 task.cancel()
@@ -266,6 +286,7 @@ async def lifespan(_: FastAPI):
         cache_refresh_task = None
         gdynia_watch_task = None
         port_data_refresh_task = None
+        kafka_consumer_task = None
         if kafka_producer is not None:
             await kafka_producer.stop()
             kafka_producer = None
@@ -306,6 +327,15 @@ def traffic_status(speed_kmh: float) -> str:
     if speed_kmh < 12:
         return "CRITICAL"
     if speed_kmh < 25:
+        return "CONGESTION"
+    return "CLEAR"
+
+
+def traffic_status_for_loop(intensity_vph: float) -> str:
+    """Port induction loops — high volume is normal; flag only extreme saturation."""
+    if intensity_vph >= 2200:
+        return "CRITICAL"
+    if intensity_vph >= 1850:
         return "CONGESTION"
     return "CLEAR"
 
@@ -493,7 +523,7 @@ def build_gdynia_events(
                     "intensity_vph": item["intensity_vph"],
                     "is_bus_stop": False,
                 },
-                "status": traffic_status(item["speed_kmh"]),
+                "status": traffic_status_for_loop(item["intensity_vph"]),
             }
         )
     return events
@@ -783,6 +813,58 @@ async def publish_events_to_kafka(events: list[dict[str, Any]]) -> int:
     return published
 
 
+def corridor_snapshot_kafka_message(snapshot: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "record_kind": "corridor_snapshot",
+        "event_id": f"corridor_snapshot_{snapshot.get('corridor_id')}_{snapshot.get('timestamp', '')}",
+        "corridor_id": snapshot.get("corridor_id"),
+        "port_id": snapshot.get("port_id"),
+        "port_name": snapshot.get("port_name"),
+        "corridor_name": snapshot.get("corridor_name"),
+        "timestamp": snapshot.get("timestamp"),
+        "metrics": snapshot.get("metrics") or {},
+    }
+
+
+async def publish_corridor_snapshots_to_kafka(snapshots: list[dict[str, Any]]) -> int:
+    if kafka_producer is None or not snapshots:
+        return 0
+    published = 0
+    for snapshot in snapshots:
+        message = corridor_snapshot_kafka_message(snapshot)
+        try:
+            await kafka_producer.send_and_wait(
+                KAFKA_TOPIC,
+                value=message,
+                key=str(snapshot.get("corridor_id") or ""),
+            )
+            published += 1
+        except Exception as exc:
+            logger.warning(
+                "Failed to publish corridor snapshot %s to Kafka: %s",
+                snapshot.get("corridor_id"),
+                exc,
+            )
+    if published:
+        logger.info("Published %s corridor snapshots to topic %s", published, KAFKA_TOPIC)
+    return published
+
+
+def parse_horizons_param(raw: str) -> tuple[int, ...]:
+    values: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            minute = int(part)
+        except ValueError:
+            continue
+        if 5 <= minute <= 360:
+            values.append(minute)
+    return tuple(sorted(set(values))) if values else DEFAULT_HORIZONS
+
+
 @app.get("/api/v1/port-traffic")
 async def get_port_traffic(
     publish_kafka: bool = Query(default=True, description="Publish events to Kafka"),
@@ -808,6 +890,10 @@ async def get_map_data() -> dict[str, Any]:
     terminals_catalog = build_terminals_catalog(port_data_store)
     approach_zones = build_approach_zones(port_data_store, traffic_events=road_events)
     city_port_dashboard = build_city_port_dashboard(port_data_store, traffic_events=road_events)
+    delay_forecasts = build_forecast_response(
+        observation_store=observation_store,
+        horizons=DEFAULT_HORIZONS,
+    )
 
     return {
         "primary": {
@@ -835,6 +921,7 @@ async def get_map_data() -> dict[str, Any]:
         "cached_at": updated_at.isoformat() if updated_at else None,
         "age_seconds": traffic_cache.age_seconds(),
         "refresh_interval_seconds": CACHE_REFRESH_INTERVAL_SECONDS,
+        "delay_forecasts": delay_forecasts,
         "sources": {
             "tomtom": {
                 "incident_count": len(primary),
@@ -922,6 +1009,28 @@ async def get_engine_corridors() -> dict[str, Any]:
         "corridors": snapshots,
         "related_events": events,
     }
+
+
+@app.get("/api/v1/engine/forecast")
+async def get_engine_forecast(
+    horizons: str = Query(
+        default="10,15,20,30,45,60,120,180",
+        description="Comma-separated forecast horizons in minutes",
+    ),
+    port_id: str | None = Query(default=None),
+    corridor_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    """Hybrid delay forecast per corridor (Kafka trend <=30 min, ML >30 min)."""
+    _, _, updated_at = await traffic_cache.get_engine_state()
+    if updated_at is None:
+        await traffic_cache.refresh(is_startup=True)
+    parsed_horizons = parse_horizons_param(horizons)
+    return build_forecast_response(
+        observation_store=observation_store,
+        horizons=parsed_horizons,
+        port_id=port_id,
+        corridor_id=corridor_id,
+    )
 
 
 class CorridorGeometryUpdate(BaseModel):
@@ -1053,16 +1162,73 @@ async def map_page_alias() -> FileResponse:
     return FileResponse("map.html")
 
 
+@app.post("/api/v1/engine/ml/reload")
+async def reload_ml_model() -> dict[str, Any]:
+    """Reset and reload the on-disk delay regressor (no buffer / cache reuse)."""
+    reset_model()
+    model = await asyncio.to_thread(lambda: load_model(force=True))
+    return {
+        "ok": model is not None,
+        "enabled": ml_enabled(),
+        "model_path": str(model_path()),
+        "loaded": model is not None,
+    }
+
+
+class VoiceDemoCallRequest(BaseModel):
+    to_number: str | None = Field(default=None, description="E.164 override; defaults to VOICE_CALL_DEMO_TO")
+    message: str | None = Field(default=None, max_length=500)
+
+
+@app.post("/api/v1/voice/demo-call")
+async def trigger_voice_demo_call(body: VoiceDemoCallRequest | None = None) -> dict[str, Any]:
+    """Temporary demo: outbound voice alert via ElevenLabs + Twilio."""
+    if not is_voice_call_configured():
+        raise HTTPException(status_code=503, detail="voice_not_configured")
+
+    to_number = (body.to_number if body and body.to_number else os.environ.get("VOICE_CALL_DEMO_TO", "")).strip()
+    if not to_number:
+        raise HTTPException(status_code=400, detail="voice_demo_to_missing")
+
+    message = (
+        body.message
+        if body and body.message
+        else "Uwaga! Jedzie dziekan. Przygotujcie się — za chwilę wchodzi na salę hackathonu."
+    )
+
+    try:
+        return await make_automated_voice_call(to_number, message)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Voice demo call failed")
+        raise HTTPException(status_code=500, detail="voice_call_failed") from exc
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
+    model = load_model()
     return {
         "status": "ok",
         "database": observation_store.backend_name,
         "observation_count": observation_store.corridor_count(),
+        "ml": {
+            "enabled": ml_enabled(),
+            "model_path": str(model_path()),
+            "loaded": model is not None,
+        },
         "kafka": {
             "connected": kafka_producer is not None,
             "bootstrap": KAFKA_BOOTSTRAP_SERVERS,
             "topic": KAFKA_TOPIC,
             "publish_on_refresh": KAFKA_PUBLISH_ON_REFRESH,
+            "consumer_running": kafka_consumer_task is not None and not kafka_consumer_task.done(),
+            "prediction_buffer": kafka_prediction_buffer.status(),
+        },
+        "voice": {
+            "configured": is_voice_call_configured(),
+            "mode": voice_call_mode(),
         },
     }

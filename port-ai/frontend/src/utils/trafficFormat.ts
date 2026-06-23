@@ -64,6 +64,26 @@ export function formatDateTime(value: string | null | undefined, locale: string)
   return date.toLocaleString(locale)
 }
 
+/** Human-readable delay: seconds under 1 min, otherwise minutes or hours. */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) {
+    return '—'
+  }
+  const total = Math.max(0, Math.round(seconds))
+  if (total < 60) {
+    return `${total} s`
+  }
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  if (hours === 0) {
+    return `${minutes} min`
+  }
+  if (minutes === 0) {
+    return `${hours} h`
+  }
+  return `${hours} h ${minutes} min`
+}
+
 export function splitContextEvents(events: TrafficEvent[]) {
   const segments: TrafficEvent[] = []
   const vehicles: TrafficEvent[] = []

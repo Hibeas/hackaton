@@ -8,3 +8,6 @@ openpyxl
 numpy
 psycopg2-binary
 python-dotenv
+scikit-learn
+joblib
+twilio

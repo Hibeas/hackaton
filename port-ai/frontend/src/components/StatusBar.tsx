@@ -41,25 +41,41 @@ export function StatusBar({
     return () => window.clearInterval(tickId)
   }, [lastUpdatedAt, refreshIntervalMs])
 
-  const statusText = error
-    ? t('status.error')
-    : isLoading
-      ? t('status.loading')
-      : [
-          `${t('status.engineEvents')}: ${engineEventCount}`,
-          `${t('status.tomtomIncidents')}: ${primaryCount}`,
-          `${t('status.ztmContext')}: ${contextCount}`,
-          dataAgeSeconds !== null
-            ? `${t('status.dataAge')}: ${t('status.seconds', { count: Math.round(dataAgeSeconds) })}`
-            : null,
-          `${t('status.nextRefresh')}: ${t('status.seconds', { count: nextRefreshSeconds })}`,
-        ]
-          .filter(Boolean)
-          .join(' · ')
+  if (error) {
+    return (
+      <footer className="status-bar status-bar--error">
+        <span className="status-bar__item">{t('status.error')}</span>
+      </footer>
+    )
+  }
 
   return (
-    <footer className={`status-bar${error ? ' status-bar--error' : ''}`}>
-      {statusText}
+    <footer className="status-bar">
+      <span className={`status-bar__item${isLoading ? ' status-bar__item--pulse' : ''}`}>
+        {isLoading ? t('status.loading') : t('status.live')}
+      </span>
+      <span className="status-bar__divider" />
+      <span className="status-bar__item">
+        {t('status.engineEvents')}: <strong>{engineEventCount}</strong>
+      </span>
+      <span className="status-bar__item">
+        TomTom: <strong>{primaryCount}</strong>
+      </span>
+      <span className="status-bar__item">
+        ZTM: <strong>{contextCount}</strong>
+      </span>
+      {dataAgeSeconds !== null ? (
+        <>
+          <span className="status-bar__divider" />
+          <span className="status-bar__item">
+            {t('status.dataAge')}: {t('status.seconds', { count: Math.round(dataAgeSeconds) })}
+          </span>
+        </>
+      ) : null}
+      <span className="status-bar__spacer" />
+      <span className="status-bar__item status-bar__item--muted">
+        {t('status.nextRefresh')}: {t('status.seconds', { count: nextRefreshSeconds })}
+      </span>
     </footer>
   )
 }

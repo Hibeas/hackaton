@@ -1,7 +1,59 @@
 {
+  "app": {
+    "title": "Port-AI",
+    "tagline": "Monitoring dojazdów portowych · live",
+    "liveData": "Dane na żywo",
+    "alerts": "Alerty",
+    "navigation": "Nawigacja panelu",
+    "modeNavigation": "Tryb panelu",
+    "mode": {
+      "live": "Live",
+      "forecast": "Predykcja"
+    }
+  },
+  "overview": {
+    "allClear": "Sytuacja spokojna",
+    "allClearHint": "Brak aktywnych anomalii na wybranym porcie.",
+    "activeAlerts": "{{count}} aktywnych alertów — wymaga uwagi",
+    "viewAlerts": "Zobacz alerty",
+    "kpiAlerts": "Alerty",
+    "kpiVessels": "Statki w porcie",
+    "kpiRoads": "Drogi TIR",
+    "noRoadData": "Brak danych",
+    "corridorHint": "Kliknij korytarz, aby rozwinąć szczegóły i podświetlić go na mapie."
+  },
+  "corridor": {
+    "anomalySection": "Wykryta anomalia",
+    "metricsSection": "Metryki live",
+    "metaSection": "Korytarz",
+    "bottleneckSection": "Historia (60 min)",
+    "noAnomaly": "Brak aktywnej anomalii na tym korytarzu.",
+    "totalDelay": "Suma opóźnień",
+    "maxDelay": "Maks. opóźnienie",
+    "avgSpeed": "Śr. prędkość",
+    "ztmCongestion": "Kongestia ZTM",
+    "avgIntensity": "Natężenie ZTM",
+    "demandRatio": "Popyt portowy",
+    "city": "Miasto",
+    "terminals": "Terminale",
+    "portAccess": "Wpływ na dojazd",
+    "updatedAt": "Ostatnia obserwacja",
+    "incidentCauses": "Przyczyny incydentów",
+    "windowMinutes": "Okno analizy",
+    "durationMinutes": "Szac. czas trwania",
+    "deltaSpeed": "Spadek prędkości",
+    "deltaDelay": "Wzrost opóźnienia",
+    "deltaCongestion": "Wzrost kongestii",
+    "bottleneckWindow": "Okno rankingu",
+    "avgDelayWindow": "Śr. opóźnienie",
+    "minSpeedWindow": "Min. prędkość",
+    "yes": "Tak",
+    "no": "Nie"
+  },
   "status": {
     "loading": "Ładowanie danych…",
     "error": "Nie udało się pobrać danych. Ponawiam…",
+    "live": "Live",
     "dataAge": "Wiek danych",
     "nextRefresh": "Następna aktualizacja za",
     "engineEvents": "Zdarzenia silnika",
@@ -30,7 +82,18 @@
     "incidents": "Incydenty TomTom",
     "incidentsShort": "inc.",
     "delayShort": "opóźn.",
+    "confidenceShort": "pewn.",
     "logisticsWeight": "Waga logistyczna korytarza (1–10)",
+    "businessPriorityShort": {
+      "CRITICAL": "P1",
+      "HIGH": "P2",
+      "MEDIUM": "P3"
+    },
+    "businessPriorityTitle": {
+      "CRITICAL": "Priorytet logistyczny: krytyczny (nie status ruchu)",
+      "HIGH": "Priorytet logistyczny: wysoki (nie status ruchu)",
+      "MEDIUM": "Priorytet logistyczny: średni (nie status ruchu)"
+    },
     "stress": "stres",
     "dispatchImpact": {
       "HOLD_DISPATCH": "Wstrzymaj dispatch",
@@ -42,6 +105,43 @@
       "low_port_demand": "Niski popyt portu",
       "moderate_port_demand": "Umiarkowany popyt",
       "unknown": "Brak baseline"
+    },
+    "forecast": {
+      "title": "Prognoza opóźnienia",
+      "panelTitle": "Prognoza opóźnień",
+      "panelHint": "Szacunek za {{minutes}} min — korytarze posortowane od najwyższego prognozowanego opóźnienia.",
+      "hint": "Badge: +15 min (trend), +30 min, +60 min (model ML)",
+      "updatedAt": "Prognoza",
+      "inMinutes": "+{{count}} min",
+      "horizonMinutes": "{{count}} min",
+      "horizon2h": "2 h",
+      "horizon3h": "3 h",
+      "horizonNavigation": "Horyzont prognozy",
+      "modeActive": "Horyzont",
+      "panelHintMl": "Prognoza modelu ML na {{horizon}} — bez bufora Kafka, wyłącznie Random Forest.",
+      "now": "Teraz",
+      "noCorridors": "Brak korytarzy dla wybranego portu",
+      "noData": "Brak prognozy — za mało danych w buforze",
+      "samples": "{{count}} próbek",
+      "engineStatus": "Silnik prognozy",
+      "mlEnabled": "Model ML",
+      "kafkaSamples": "Próbki Kafka",
+      "kafkaCorridors": "Korytarze w buforze",
+      "method": {
+        "kafka_trend": "Trend z bufora Kafka (na żywo)",
+        "observation_trend": "Trend z historii obserwacji (fallback)",
+        "ml_historical": "Model historyczny (Random Forest)"
+      },
+      "methodShort": {
+        "kafka_trend": "Kafka",
+        "observation_trend": "Trend",
+        "ml_historical": "ML"
+      },
+      "confidence": {
+        "high": "Wysoka pewność",
+        "medium": "Średnia pewność",
+        "low": "Niska pewność"
+      }
     }
   },
   "corridorEditor": {
@@ -128,7 +228,6 @@
     "expand": "Rozwiń",
     "callsInPort": "Statki w porcie: {{count}}",
     "gateMoves": "Ruchy bramkowe (baza): {{count}}",
-    "activeTerminals": "Aktywne terminale: {{active}} / {{total}}",
     "movesLastHour": "{{count}} ruch/h",
     "moves24h": "24h: {{count}}",
     "terminalIdle": "Brak ruchu w ostatniej godzinie",
@@ -141,6 +240,17 @@
       "low": "Niski popyt TIR",
       "idle": "Bez ruchu"
     }
+  },
+  "voice": {
+    "demoCall": "Test połączenia",
+    "demoCallHint": "Tymczasowy demo: alert głosowy ElevenLabs + Twilio",
+    "demoMessage": "Uwaga! Jedzie dziekan. Przygotujcie się — za chwilę wchodzi na salę hackathonu.",
+    "calling": "Dzwonię…",
+    "callOk": "Wysłano",
+    "callError": "Błąd",
+    "errorNotConfigured": "Brak TWILIO/ELEVENLABS w backend/.env",
+    "errorNoNumber": "Ustaw VOICE_CALL_DEMO_TO w .env",
+    "errorProvider": "Błąd ElevenLabs/Twilio — sprawdź logi backendu"
   },
   "language": {
     "label": "Język",

@@ -17,6 +17,7 @@ body,
 body {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: var(--font-size-md);
+  line-height: 1.5;
   color: var(--color-text);
   background: var(--color-bg);
   -webkit-font-smoothing: antialiased;
@@ -25,4 +26,10 @@ body {
 button {
   font: inherit;
   cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

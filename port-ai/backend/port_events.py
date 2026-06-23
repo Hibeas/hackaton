@@ -33,6 +33,19 @@ ROAD_STATUS_LABELS_PL: dict[str, str] = {
     "unknown": "Brak danych",
 }
 
+GENERIC_ROAD_TOKENS: frozenset[str] = frozenset(
+    {"port", "trasa", "drogi", "obwodnica", "ul", "do", "na", "od", "wjazd"}
+)
+
+CITY_ALIASES: dict[str, str] = {
+    "gdansk": "gdansk",
+    "gdańsk": "gdansk",
+    "gdynia": "gdynia",
+    "szczecin": "szczecin",
+    "swinoujscie": "swinoujscie",
+    "świnoujście": "swinoujscie",
+}
+
 
 def resolve_location(
     *,
@@ -481,6 +494,21 @@ def load_approach_zones_config() -> dict[str, Any]:
     return {"zones": []}
 
 
+def _normalize_city(city: str | None) -> str | None:
+    if not city:
+        return None
+    normalized = city.strip().lower()
+    return CITY_ALIASES.get(normalized, normalized)
+
+
+def _cities_match(left: str | None, right: str | None) -> bool:
+    left_norm = _normalize_city(left)
+    right_norm = _normalize_city(right)
+    if not left_norm or not right_norm:
+        return True
+    return left_norm == right_norm
+
+
 def _road_match_tokens(road_pl: str) -> list[str]:
     normalized = road_pl.lower()
     normalized = re.sub(r"\bul\.\s*", "", normalized)
@@ -569,7 +597,15 @@ def _token_matches_haystack(token: str, haystack: str) -> bool:
     return token in haystack
 
 
-def road_matches_traffic_event(road_pl: str, event: dict[str, Any]) -> bool:
+def road_matches_traffic_event(
+    road_pl: str,
+    event: dict[str, Any],
+    *,
+    city: str | None = None,
+) -> bool:
+    if city and not _cities_match(event.get("city"), city):
+        return False
+
     location = event.get("location") or {}
     haystack = " ".join(
         str(part or "")
@@ -582,10 +618,42 @@ def road_matches_traffic_event(road_pl: str, event: dict[str, Any]) -> bool:
     ).lower()
     if not haystack.strip():
         return False
-    for token in _road_match_tokens(road_pl):
-        if _token_matches_haystack(token, haystack):
-            return True
-    return False
+
+    tokens = _road_match_tokens(road_pl)
+    significant = [token for token in tokens if token not in GENERIC_ROAD_TOKENS]
+    if not significant:
+        significant = tokens
+
+    matched = [token for token in significant if _token_matches_haystack(token, haystack)]
+    if not matched:
+        return False
+    if len(significant) >= 2 and len(matched) < 2:
+        return False
+    return True
+
+
+def _event_operational_status(event: dict[str, Any]) -> str:
+    """Downgrade noisy matches (e.g. zero-delay incidents) for TIR road KPIs."""
+    base = str(event.get("status") or "CLEAR")
+    if base not in {"CRITICAL", "CONGESTION"}:
+        return base
+
+    metrics = event.get("metrics") or {}
+    context = event.get("context") or {}
+    delay = int(metrics.get("delay_sec") or metrics.get("total_delay_sec") or context.get("delay_sec") or 0)
+    record_kind = str(event.get("record_kind") or "")
+
+    if record_kind == "incident" and delay < 30:
+        icon = str(context.get("icon_category") or "").lower()
+        if icon not in {"closed", "roadclosed", "road_closed"}:
+            return "CONGESTION" if base == "CRITICAL" else base
+
+    if record_kind == "vehicle" and delay == 0 and base == "CRITICAL":
+        speed = metrics.get("speed_kmh")
+        if speed is not None and float(speed) > 8:
+            return "CONGESTION"
+
+    return base
 
 
 def _collect_snapped_geometries(
@@ -611,7 +679,10 @@ def _collect_snapped_geometries(
             continue
         if _min_distance_coords_km(reference_coords, event_coords) > max_distance_km:
             continue
-        name_match = any(road_matches_traffic_event(road, event) for road in roads)
+        name_match = any(
+            road_matches_traffic_event(road, event, city=zone.get("city"))
+            for road in roads
+        )
         record_kind = event.get("record_kind")
         if not name_match and record_kind not in ("road_segment", "traffic_incident"):
             continue
@@ -652,8 +723,17 @@ def _enrich_corridor_geometry(
     }
 
 
-def resolve_road_traffic_status(road_pl: str, traffic_events: list[dict[str, Any]]) -> dict[str, Any]:
-    matches = [event for event in traffic_events if road_matches_traffic_event(road_pl, event)]
+def resolve_road_traffic_status(
+    road_pl: str,
+    traffic_events: list[dict[str, Any]],
+    *,
+    city: str | None = None,
+) -> dict[str, Any]:
+    matches = [
+        event
+        for event in traffic_events
+        if road_matches_traffic_event(road_pl, event, city=city)
+    ]
     if not matches:
         return {
             "road": road_pl,
@@ -661,7 +741,7 @@ def resolve_road_traffic_status(road_pl: str, traffic_events: list[dict[str, Any
             "label_pl": ROAD_STATUS_LABELS_PL["unknown"],
             "matched_events": 0,
         }
-    statuses = [str(event.get("status") or "CLEAR") for event in matches]
+    statuses = [_event_operational_status(event) for event in matches]
     if "CRITICAL" in statuses:
         status = "CRITICAL"
     elif "CONGESTION" in statuses:
@@ -807,7 +887,8 @@ def build_approach_zones(
         active = bool(terminal_info.get("active_last_hour"))
         hint = terminal_info.get("truck_demand_hint", "idle")
         roads_status = [
-            resolve_road_traffic_status(road, traffic) for road in (zone.get("roads_pl") or [])
+            resolve_road_traffic_status(road, traffic, city=zone.get("city"))
+            for road in (zone.get("roads_pl") or [])
         ]
         road_statuses = [item["status"] for item in roads_status]
         corridor_geom = _enrich_corridor_geometry(zone, traffic)
@@ -846,11 +927,12 @@ def build_city_port_dashboard(
         seen_roads: set[str] = set()
         roads: list[dict[str, Any]] = []
         for zone in city_zones:
+            zone_city = zone.get("city")
             for road in zone.get("roads_pl") or []:
                 if road in seen_roads:
                     continue
                 seen_roads.add(road)
-                roads.append(resolve_road_traffic_status(road, traffic))
+                roads.append(resolve_road_traffic_status(road, traffic, city=zone_city))
         roads.sort(
             key=lambda item: (
                 0 if item["status"] == "CRITICAL" else 1 if item["status"] == "CONGESTION" else 2,

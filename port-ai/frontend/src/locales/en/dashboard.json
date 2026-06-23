@@ -1,7 +1,59 @@
 {
+  "app": {
+    "title": "Port-AI",
+    "tagline": "Port access monitoring · live",
+    "liveData": "Live data",
+    "alerts": "Alerts",
+    "navigation": "Dashboard navigation",
+    "modeNavigation": "Panel mode",
+    "mode": {
+      "live": "Live",
+      "forecast": "Forecast"
+    }
+  },
+  "overview": {
+    "allClear": "All clear",
+    "allClearHint": "No active anomalies for the selected port.",
+    "activeAlerts": "{{count}} active alerts — needs attention",
+    "viewAlerts": "View alerts",
+    "kpiAlerts": "Alerts",
+    "kpiVessels": "Vessels in port",
+    "kpiRoads": "TIR roads",
+    "noRoadData": "No data",
+    "corridorHint": "Click a corridor to expand details and highlight it on the map."
+  },
+  "corridor": {
+    "anomalySection": "Detected anomaly",
+    "metricsSection": "Live metrics",
+    "metaSection": "Corridor",
+    "bottleneckSection": "History (60 min)",
+    "noAnomaly": "No active anomaly on this corridor.",
+    "totalDelay": "Total delay",
+    "maxDelay": "Max delay",
+    "avgSpeed": "Avg speed",
+    "ztmCongestion": "ZTM congestion",
+    "avgIntensity": "ZTM intensity",
+    "demandRatio": "Port demand",
+    "city": "City",
+    "terminals": "Terminals",
+    "portAccess": "Impacts port access",
+    "updatedAt": "Last observation",
+    "incidentCauses": "Incident causes",
+    "windowMinutes": "Analysis window",
+    "durationMinutes": "Est. duration",
+    "deltaSpeed": "Speed drop",
+    "deltaDelay": "Delay increase",
+    "deltaCongestion": "Congestion increase",
+    "bottleneckWindow": "Ranking window",
+    "avgDelayWindow": "Avg delay",
+    "minSpeedWindow": "Min speed",
+    "yes": "Yes",
+    "no": "No"
+  },
   "status": {
     "loading": "Loading data…",
     "error": "Failed to load data. Retrying…",
+    "live": "Live",
     "dataAge": "Data age",
     "nextRefresh": "Next refresh in",
     "engineEvents": "Engine events",
@@ -30,7 +82,18 @@
     "incidents": "TomTom incidents",
     "incidentsShort": "inc.",
     "delayShort": "delay",
+    "confidenceShort": "conf.",
     "logisticsWeight": "Corridor logistics weight (1–10)",
+    "businessPriorityShort": {
+      "CRITICAL": "P1",
+      "HIGH": "P2",
+      "MEDIUM": "P3"
+    },
+    "businessPriorityTitle": {
+      "CRITICAL": "Logistics priority: critical (not traffic status)",
+      "HIGH": "Logistics priority: high (not traffic status)",
+      "MEDIUM": "Logistics priority: medium (not traffic status)"
+    },
     "stress": "stress",
     "dispatchImpact": {
       "HOLD_DISPATCH": "Hold dispatch",
@@ -42,6 +105,43 @@
       "low_port_demand": "Low port demand",
       "moderate_port_demand": "Moderate demand",
       "unknown": "No baseline"
+    },
+    "forecast": {
+      "title": "Delay forecast",
+      "panelTitle": "Delay forecasts",
+      "panelHint": "Estimate in {{minutes}} min — corridors sorted by highest predicted delay.",
+      "hint": "Badge: +15 min (trend), +30 min, +60 min (ML model)",
+      "updatedAt": "Forecast",
+      "inMinutes": "+{{count}} min",
+      "horizonMinutes": "{{count}} min",
+      "horizon2h": "2 h",
+      "horizon3h": "3 h",
+      "horizonNavigation": "Forecast horizon",
+      "modeActive": "Horizon",
+      "panelHintMl": "ML model forecast for {{horizon}} — no Kafka buffer, Random Forest only.",
+      "now": "Now",
+      "noCorridors": "No corridors for selected port",
+      "noData": "No forecast — insufficient buffer data",
+      "samples": "{{count}} samples",
+      "engineStatus": "Forecast engine",
+      "mlEnabled": "ML model",
+      "kafkaSamples": "Kafka samples",
+      "kafkaCorridors": "Buffered corridors",
+      "method": {
+        "kafka_trend": "Kafka buffer trend (live)",
+        "observation_trend": "Observation history trend (fallback)",
+        "ml_historical": "Historical model (Random Forest)"
+      },
+      "methodShort": {
+        "kafka_trend": "Kafka",
+        "observation_trend": "Trend",
+        "ml_historical": "ML"
+      },
+      "confidence": {
+        "high": "High confidence",
+        "medium": "Medium confidence",
+        "low": "Low confidence"
+      }
     }
   },
   "corridorEditor": {
@@ -128,7 +228,6 @@
     "expand": "Expand",
     "callsInPort": "Vessels in port: {{count}}",
     "gateMoves": "Gate moves (db): {{count}}",
-    "activeTerminals": "Active terminals: {{active}} / {{total}}",
     "movesLastHour": "{{count}} moves/h",
     "moves24h": "24h: {{count}}",
     "terminalIdle": "No moves in the last hour",
@@ -141,6 +240,17 @@
       "low": "Low TIR demand",
       "idle": "Idle"
     }
+  },
+  "voice": {
+    "demoCall": "Test call",
+    "demoCallHint": "Temporary demo: ElevenLabs + Twilio voice alert",
+    "demoMessage": "Attention! The dean is on the way. Get ready — they are about to enter the hackathon room.",
+    "calling": "Calling…",
+    "callOk": "Sent",
+    "callError": "Error",
+    "errorNotConfigured": "Missing TWILIO/ELEVENLABS in backend/.env",
+    "errorNoNumber": "Set VOICE_CALL_DEMO_TO in .env",
+    "errorProvider": "ElevenLabs/Twilio error — check backend logs"
   },
   "language": {
     "label": "Language",

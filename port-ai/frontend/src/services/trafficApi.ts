@@ -5,6 +5,7 @@ import type {
 import type {
   BottlenecksResponse,
   CorridorsResponse,
+  DelayForecastResponse,
   EngineEventsResponse,
 } from '../types/engine'
 import type { CorridorConfigResponse } from '../types/corridorConfig'
@@ -36,6 +37,27 @@ export async function fetchBottlenecks(): Promise<BottlenecksResponse> {
 
 export async function fetchCorridors(): Promise<CorridorsResponse> {
   return fetchJson<CorridorsResponse>('/api/v1/engine/corridors')
+}
+
+export async function fetchEngineForecast(params?: {
+  horizons?: number[]
+  portId?: string
+  corridorId?: string
+}): Promise<DelayForecastResponse> {
+  const search = new URLSearchParams()
+  if (params?.horizons?.length) {
+    search.set('horizons', params.horizons.join(','))
+  }
+  if (params?.portId) {
+    search.set('port_id', params.portId)
+  }
+  if (params?.corridorId) {
+    search.set('corridor_id', params.corridorId)
+  }
+  const query = search.toString()
+  return fetchJson<DelayForecastResponse>(
+    `/api/v1/engine/forecast${query ? `?${query}` : ''}`,
+  )
 }
 
 export async function fetchCorridorConfig(): Promise<CorridorConfigResponse> {
@@ -135,4 +157,26 @@ export async function deleteCorridor(
     throw new Error(`HTTP ${response.status} deleting corridor`)
   }
   return response.json() as Promise<{ ok: boolean; corridor_id: string }>
+}
+
+export interface VoiceDemoCallResponse {
+  ok: boolean
+  call_sid: string
+  to_number: string
+  from_number: string
+}
+
+export async function triggerVoiceDemoCall(
+  payload?: { to_number?: string; message?: string },
+): Promise<VoiceDemoCallResponse> {
+  const response = await fetch('/api/v1/voice/demo-call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload ?? {}),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<VoiceDemoCallResponse>
 }

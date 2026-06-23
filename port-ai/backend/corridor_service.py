@@ -205,6 +205,39 @@ def _point_in_bbox(lat: float, lon: float, bbox: dict[str, float]) -> bool:
     )
 
 
+def _point_in_polygon(lat: float, lon: float, polygon: list[list[float]]) -> bool:
+    """Ray casting; polygon vertices are [lat, lon]."""
+    if len(polygon) < 3:
+        return False
+    inside = False
+    count = len(polygon)
+    j = count - 1
+    for i in range(count):
+        yi, xi = float(polygon[i][0]), float(polygon[i][1])
+        yj, xj = float(polygon[j][0]), float(polygon[j][1])
+        if ((yi > lat) != (yj > lat)) and (
+            lon < (xj - xi) * (lat - yi) / ((yj - yi) or 1e-15) + xi
+        ):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _geometry_hits_polygon(geometry: dict[str, Any] | None, polygon: list[list[float]]) -> bool:
+    if not geometry:
+        return False
+    coords = geometry.get("coordinates")
+    if not coords:
+        return False
+    if geometry.get("type") == "Point" and len(coords) >= 2:
+        return _point_in_polygon(float(coords[1]), float(coords[0]), polygon)
+    if geometry.get("type") == "LineString":
+        for point in coords:
+            if len(point) >= 2 and _point_in_polygon(float(point[1]), float(point[0]), polygon):
+                return True
+    return False
+
+
 def _geometry_hits_bbox(geometry: dict[str, Any] | None, bbox: dict[str, float]) -> bool:
     if not geometry:
         return False
@@ -221,7 +254,7 @@ def _geometry_hits_bbox(geometry: dict[str, Any] | None, bbox: dict[str, float])
     return False
 
 
-def _event_in_corridor(event: dict[str, Any], bbox: dict[str, float]) -> bool:
+def _event_in_bbox(event: dict[str, Any], bbox: dict[str, float]) -> bool:
     location = event.get("location") or {}
     lat = location.get("lat")
     lon = location.get("lon")
@@ -230,11 +263,31 @@ def _event_in_corridor(event: dict[str, Any], bbox: dict[str, float]) -> bool:
     return _geometry_hits_bbox(event.get("geometry"), bbox)
 
 
+def _event_in_polygon(event: dict[str, Any], polygon: list[list[float]]) -> bool:
+    location = event.get("location") or {}
+    lat = location.get("lat")
+    lon = location.get("lon")
+    if lat is not None and lon is not None and _point_in_polygon(float(lat), float(lon), polygon):
+        return True
+    return _geometry_hits_polygon(event.get("geometry"), polygon)
+
+
+def _event_in_corridor(event: dict[str, Any], corridor: dict[str, Any]) -> bool:
+    """Prefer calibrated polygon; fall back to axis-aligned bbox."""
+    polygon = corridor.get("polygon")
+    if polygon and len(polygon) >= 3:
+        return _event_in_polygon(event, polygon)
+    return _event_in_bbox(event, corridor["bbox"])
+
+
 def _avg_speed(context_events: list[dict[str, Any]]) -> float | None:
+    """GPS speeds from ZTM vehicles only — not loop intensity estimates."""
     speeds: list[float] = []
     for event in context_events:
+        if event.get("record_kind") != "vehicle":
+            continue
         metrics = event.get("metrics") or {}
-        if event.get("record_kind") == "vehicle" and metrics.get("is_bus_stop"):
+        if metrics.get("is_bus_stop"):
             continue
         speed = metrics.get("speed_kmh")
         if speed is not None and float(speed) >= 0:
@@ -296,9 +349,8 @@ def build_corridor_snapshots(
 
     for port in config["ports"]:
         for corridor in port["corridors"]:
-            bbox = corridor["bbox"]
-            corridor_primary = [event for event in primary_events if _event_in_corridor(event, bbox)]
-            corridor_context = [event for event in context_events if _event_in_corridor(event, bbox)]
+            corridor_primary = [event for event in primary_events if _event_in_corridor(event, corridor)]
+            corridor_context = [event for event in context_events if _event_in_corridor(event, corridor)]
 
             delays = [
                 int((event.get("metrics") or {}).get("delay_sec") or 0)

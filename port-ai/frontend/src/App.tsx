@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PORTS } from './constants/ports'
 import { CorridorBBoxEditor } from './components/CorridorBBoxEditor'
-import { EngineDashboard } from './components/EngineDashboard'
-import { LanguageSwitcher } from './components/LanguageSwitcher'
+import { AppHeader } from './components/AppHeader'
+import { DashboardSidebar } from './components/DashboardSidebar'
 import { StatusBar } from './components/StatusBar'
 import { TrafficMap } from './components/TrafficMap'
 import { MapErrorBoundary } from './components/MapErrorBoundary'
 import { useTrafficDashboard } from './hooks/useTrafficDashboard'
 import { filterUiPorts, resolveFocusGeometry } from './utils/corridorConfigHelpers'
+import { DEFAULT_FORECAST_HORIZON, type DashboardMode } from './constants/forecast'
 import './App.css'
 
 type AppView = 'dashboard' | 'editor'
@@ -50,10 +51,18 @@ function DashboardView() {
 
   const [selectedPortId, setSelectedPortId] = useState('gdynia')
   const [selectedCorridorId, setSelectedCorridorId] = useState<string | null>(null)
+  const [dashboardMode, setDashboardMode] = useState<DashboardMode>('live')
+  const [forecastHorizon, setForecastHorizon] = useState(DEFAULT_FORECAST_HORIZON)
 
   const focusGeometry = useMemo(
     () => resolveFocusGeometry(ports, selectedPortId, selectedCorridorId),
     [ports, selectedCorridorId, selectedPortId],
+  )
+
+  const portAlertCount = useMemo(
+    () =>
+      (engineEvents?.events ?? []).filter((event) => event.port_id === selectedPortId).length,
+    [engineEvents, selectedPortId],
   )
 
   const handlePortSelect = (portId: string) => {
@@ -61,9 +70,38 @@ function DashboardView() {
     setSelectedCorridorId(null)
   }
 
+  const handleCorridorSelect = (corridorId: string) => {
+    setSelectedCorridorId((current) => (current === corridorId ? null : corridorId))
+  }
+
   return (
     <>
+      <AppHeader
+        ports={ports}
+        selectedPortId={selectedPortId}
+        onPortSelect={handlePortSelect}
+        dashboardMode={dashboardMode}
+        onDashboardModeChange={setDashboardMode}
+        forecastHorizon={forecastHorizon}
+        onForecastHorizonChange={(horizon) => setForecastHorizon(horizon as typeof DEFAULT_FORECAST_HORIZON)}
+        activeAlertCount={portAlertCount}
+        tomtomCount={mapData?.primary.incident_count ?? 0}
+        isLive={!isLoading && !error}
+      />
+
       <main className="app-main">
+        <DashboardSidebar
+          engineEvents={engineEvents}
+          corridors={corridors}
+          bottlenecks={bottlenecks}
+          delayForecasts={mapData?.delay_forecasts}
+          dashboardMode={dashboardMode}
+          forecastHorizon={forecastHorizon}
+          selectedPortId={selectedPortId}
+          selectedCorridorId={selectedCorridorId}
+          onCorridorSelect={handleCorridorSelect}
+        />
+
         <div className="map-panel">
           {mapData?.primary ? (
             <MapErrorBoundary fallback={<div className="map-placeholder">{t('map.renderError')}</div>}>
@@ -78,25 +116,16 @@ function DashboardView() {
               />
             </MapErrorBoundary>
           ) : (
-            <div className="map-placeholder" />
+            <div className="map-placeholder">
+              <div className="map-placeholder__inner">
+                <span className="map-placeholder__spinner" />
+                <p>{t('status.loading')}</p>
+              </div>
+            </div>
           )}
-          <LanguageSwitcher />
-          <a className="editor-nav-link" href="#/corridor-editor">
-            {t('corridorEditor.navLink')}
-          </a>
         </div>
-        <EngineDashboard
-          ports={ports}
-          engineEvents={engineEvents}
-          corridors={corridors}
-          bottlenecks={bottlenecks}
-          portOperations={mapData?.port_operations}
-          selectedPortId={selectedPortId}
-          selectedCorridorId={selectedCorridorId}
-          onPortSelect={handlePortSelect}
-          onCorridorSelect={setSelectedCorridorId}
-        />
       </main>
+
       <StatusBar
         primaryCount={mapData?.primary.incident_count ?? 0}
         contextCount={mapData?.context.events.length ?? 0}

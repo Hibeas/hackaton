@@ -7,6 +7,7 @@ import { formatDateTime } from '../utils/trafficFormat'
 interface PortOpsPanelProps {
   portOperations: PortOperationsPayload | null | undefined
   selectedPortId: string
+  embedded?: boolean
 }
 
 function statusClass(status: string): string {
@@ -45,15 +46,17 @@ function TerminalRow({
         {t('portOps.moves24h', { count: terminal.total_moves_24h })}
       </p>
       {terminal.tir_roads && terminal.tir_roads.length > 0 ? (
-        <p className="port-ops__terminal-roads">
-          TIR: {terminal.tir_roads.join(', ')}
-        </p>
+        <p className="port-ops__terminal-roads">TIR: {terminal.tir_roads.join(', ')}</p>
       ) : null}
     </article>
   )
 }
 
-export function PortOpsPanel({ portOperations, selectedPortId }: PortOpsPanelProps) {
+export function PortOpsPanel({
+  portOperations,
+  selectedPortId,
+  embedded = false,
+}: PortOpsPanelProps) {
   const { t, i18n } = useTranslation()
   const [expanded, setExpanded] = useState(true)
 
@@ -69,9 +72,9 @@ export function PortOpsPanel({ portOperations, selectedPortId }: PortOpsPanelPro
 
   if (!portOperations || cityGroups.length === 0) {
     return (
-      <section className="sidebar__section port-ops">
-        <h2>{t('portOps.title')}</h2>
-        <p className="sidebar__meta">{t('portOps.loading')}</p>
+      <section className={`port-ops${embedded ? ' port-ops--embedded' : ''}`}>
+        <h2 className="dash-section__title">{t('portOps.title')}</h2>
+        <p className="dash-empty">{t('portOps.loading')}</p>
       </section>
     )
   }
@@ -79,26 +82,28 @@ export function PortOpsPanel({ portOperations, selectedPortId }: PortOpsPanelPro
   const summary = portOperations.summary
 
   return (
-    <section className="sidebar__section port-ops">
+    <section className={`port-ops${embedded ? ' port-ops--embedded' : ''}`}>
       <header className="port-ops__header">
         <div>
-          <h2>{t('portOps.title')}</h2>
+          <h2 className="dash-section__title">{t('portOps.title')}</h2>
           {portOperations.updated_at ? (
-            <p className="sidebar__meta">
+            <p className="dash-hint">
               {t('portOps.updatedAt')}: {formatDateTime(portOperations.updated_at, i18n.language)}
             </p>
           ) : null}
         </div>
-        <button type="button" className="port-ops__toggle" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? t('portOps.collapse') : t('portOps.expand')}
-        </button>
+        {!embedded ? (
+          <button type="button" className="port-ops__toggle" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? t('portOps.collapse') : t('portOps.expand')}
+          </button>
+        ) : null}
       </header>
 
-      {expanded ? (
+      {expanded || embedded ? (
         <>
           <div className="port-ops__summary">
-            <span>{t('portOps.callsInPort', { count: summary.active_port_calls ?? 0 })}</span>
-            <span>{t('portOps.gateMoves', { count: summary.container_move_count ?? 0 })}</span>
+            <span className="stat-chip">{t('portOps.callsInPort', { count: summary.active_port_calls ?? 0 })}</span>
+            <span className="stat-chip">{t('portOps.gateMoves', { count: summary.container_move_count ?? 0 })}</span>
           </div>
 
           {activeGroup ? (
@@ -109,12 +114,6 @@ export function PortOpsPanel({ portOperations, selectedPortId }: PortOpsPanelPro
                   {activeGroup.corridor_status_pl}
                 </span>
               </div>
-              <p className="sidebar__meta">
-                {t('portOps.activeTerminals', {
-                  active: activeGroup.active_terminals,
-                  total: activeGroup.total_terminals,
-                })}
-              </p>
 
               {activeGroup.roads_status.length > 0 ? (
                 <ul className="port-ops__roads">
