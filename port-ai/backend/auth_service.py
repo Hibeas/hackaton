@@ -8,13 +8,12 @@ from typing import Any
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from voice_call_service import normalize_phone_number, validate_phone_number
 from user_store import user_store
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
@@ -28,11 +27,11 @@ def auth_configured() -> bool:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
-    return pwd_context.verify(plain_password, password_hash)
+    return bcrypt.checkpw(plain_password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
 def validate_password_strength(password: str) -> None:
