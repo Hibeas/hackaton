@@ -1505,6 +1505,17 @@
             return `<span class="road-status-badge ${cls}"><span class="road-status-dot ${cls}"></span>${road.label_pl || "?"}</span>`;
         }
 
+        function approachZoneBandStyle(zone) {
+            const lineStyle = approachZoneStyle(zone);
+            return {
+                color: lineStyle.color,
+                weight: 1,
+                opacity: 0.4,
+                fillColor: lineStyle.color,
+                fillOpacity: zone.active_last_hour ? 0.2 : 0.1,
+            };
+        }
+
         function buildApproachZonePopup(zone) {
             const roads = (zone.roads_pl || []).join(", ");
             const status = zone.active_last_hour
@@ -1513,6 +1524,9 @@
             const roadsStatus = (zone.roads_status || [])
                 .map((road) => `${road.road}: ${road.label_pl}`)
                 .join("<br>");
+            const geomNote = zone.geometry_source === "snapped"
+                ? `Dopasowano ${zone.snapped_segments || 0} odcinków drogowych (TomTom/ZTM)`
+                : "Korytarz referencyjny (przybliżona trasa TIR)";
             return `
                 <strong>${zone.label || zone.zone_id}</strong><br>
                 <strong>Terminal:</strong> ${zone.terminal || "?"}<br>
@@ -1520,6 +1534,7 @@
                 <strong>Ruch drogowy:</strong> ${zone.corridor_status_pl || "—"}<br>
                 <strong>Drogi TIR:</strong> ${roads}<br>
                 ${roadsStatus ? `<strong>Status dróg:</strong><br>${roadsStatus}<br>` : ""}
+                <small>${geomNote}</small><br>
                 <em>${zone.focus_pl || ""}</em>
             `;
         }
@@ -1528,6 +1543,16 @@
             approachZonesLayer.clearLayers();
             let drawn = 0;
             for (const zone of zones || []) {
+                if (zone.corridor_band?.coordinates) {
+                    const bandLayer = L.geoJSON(
+                        { type: "Feature", geometry: zone.corridor_band, properties: zone },
+                        {
+                            style: () => approachZoneBandStyle(zone),
+                            interactive: false,
+                        },
+                    );
+                    approachZonesLayer.addLayer(bandLayer);
+                }
                 if (!zone.geometry?.coordinates) continue;
                 const layer = L.geoJSON(
                     { type: "Feature", geometry: zone.geometry, properties: zone },
@@ -1994,8 +2019,9 @@
                     <i class="line-sample" style="background: #dc2626;"></i> Codeco terminal (wysoki TIR)<br>
                     <i style="background: #e65100;"></i> Codeco eksport<br>
                     <i style="background: #0277bd;"></i> Codeco import<br>
-                    <i class="line-sample" style="background: #dc2626; opacity:0.5;"></i> Strefa TIR aktywna<br>
-                    <i class="line-sample" style="background: #94a3b8; opacity:0.4;"></i> Strefa TIR — bez ruchu 1h<br>
+                    <i class="line-sample" style="background: #dc2626; opacity:0.5;"></i> Korytarz TIR (aktywny)<br>
+                    <i class="line-sample" style="background: #94a3b8; opacity:0.4;"></i> Korytarz TIR — bez ruchu 1h<br>
+                    <small style="color:#64748b">Pas wzdłuż drogi ≈ strefa ulicy TIR</small><br>
                     <br><strong>Stan ruchu</strong><br>
                     <i style="background: ${statusColors.CLEAR}"></i> Płynny<br>
                     <i style="background: ${statusColors.CONGESTION}"></i> Zagęszczenie<br>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -488,6 +489,86 @@ def _road_match_tokens(road_pl: str) -> list[str]:
     return [token for token in tokens if len(token) >= 2]
 
 
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius_km = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    return 2 * radius_km * math.asin(math.sqrt(a))
+
+
+def _geometry_coords_lonlat(geometry: dict[str, Any] | None) -> list[list[float]]:
+    if not geometry:
+        return []
+    geom_type = geometry.get("type")
+    raw = geometry.get("coordinates") or []
+    if geom_type == "LineString":
+        return [[float(p[0]), float(p[1])] for p in raw if isinstance(p, (list, tuple)) and len(p) >= 2]
+    if geom_type == "MultiLineString":
+        coords: list[list[float]] = []
+        for line in raw:
+            coords.extend(
+                [[float(p[0]), float(p[1])] for p in line if isinstance(p, (list, tuple)) and len(p) >= 2]
+            )
+        return coords
+    if geom_type == "Point" and len(raw) >= 2:
+        return [[float(raw[0]), float(raw[1])]]
+    return []
+
+
+def _min_distance_coords_km(a_coords: list[list[float]], b_coords: list[list[float]]) -> float:
+    if not a_coords or not b_coords:
+        return float("inf")
+    return min(
+        _haversine_km(a[1], a[0], b[1], b[0])
+        for a in a_coords
+        for b in b_coords
+    )
+
+
+def _line_buffer_polygon(coords_lonlat: list[list[float]], half_width_deg: float = 0.0016) -> dict[str, Any] | None:
+    """Rough corridor polygon around a polyline (~140 m at Baltic latitudes)."""
+    if len(coords_lonlat) < 2:
+        return None
+    left: list[list[float]] = []
+    right: list[list[float]] = []
+    count = len(coords_lonlat)
+
+    def normal_at(index: int) -> tuple[float, float]:
+        if index == 0:
+            dx = coords_lonlat[1][0] - coords_lonlat[0][0]
+            dy = coords_lonlat[1][1] - coords_lonlat[0][1]
+        elif index == count - 1:
+            dx = coords_lonlat[-1][0] - coords_lonlat[-2][0]
+            dy = coords_lonlat[-1][1] - coords_lonlat[-2][1]
+        else:
+            dx = coords_lonlat[index + 1][0] - coords_lonlat[index - 1][0]
+            dy = coords_lonlat[index + 1][1] - coords_lonlat[index - 1][1]
+        length = math.hypot(dx, dy) or 1e-12
+        return -dy / length, dx / length
+
+    for index, (lon, lat) in enumerate(coords_lonlat):
+        nx, ny = normal_at(index)
+        left.append([lon + nx * half_width_deg, lat + ny * half_width_deg])
+        right.append([lon - nx * half_width_deg, lat - ny * half_width_deg])
+
+    ring = left + list(reversed(right))
+    if ring[0] != ring[-1]:
+        ring.append(ring[0])
+    return {"type": "Polygon", "coordinates": [ring]}
+
+
+def _token_matches_haystack(token: str, haystack: str) -> bool:
+    if re.fullmatch(r"s\d+", token):
+        return bool(re.search(rf"\b{re.escape(token)}\b", haystack))
+    if re.fullmatch(r"dk\d+", token):
+        return bool(re.search(rf"\b{re.escape(token)}\b", haystack))
+    if len(token) < 4:
+        return False
+    return token in haystack
+
+
 def road_matches_traffic_event(road_pl: str, event: dict[str, Any]) -> bool:
     location = event.get("location") or {}
     haystack = " ".join(
@@ -502,9 +583,73 @@ def road_matches_traffic_event(road_pl: str, event: dict[str, Any]) -> bool:
     if not haystack.strip():
         return False
     for token in _road_match_tokens(road_pl):
-        if token in haystack:
+        if _token_matches_haystack(token, haystack):
             return True
     return False
+
+
+def _collect_snapped_geometries(
+    zone: dict[str, Any],
+    traffic_events: list[dict[str, Any]],
+    *,
+    max_distance_km: float = 0.45,
+) -> list[dict[str, Any]]:
+    """Match TomTom/Gdynia LineStrings lying near the reference TIR corridor."""
+    reference_coords = _geometry_coords_lonlat(zone.get("geometry"))
+    if not reference_coords:
+        return []
+    roads = zone.get("roads_pl") or []
+    snapped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for event in traffic_events:
+        geometry = event.get("geometry")
+        if not geometry or geometry.get("type") != "LineString":
+            continue
+        event_coords = _geometry_coords_lonlat(geometry)
+        if not event_coords:
+            continue
+        if _min_distance_coords_km(reference_coords, event_coords) > max_distance_km:
+            continue
+        name_match = any(road_matches_traffic_event(road, event) for road in roads)
+        record_kind = event.get("record_kind")
+        if not name_match and record_kind not in ("road_segment", "traffic_incident"):
+            continue
+        key = json.dumps(geometry.get("coordinates"), sort_keys=True)
+        if key in seen:
+            continue
+        seen.add(key)
+        snapped.append(geometry)
+    return snapped
+
+
+def _merge_line_geometries(geometries: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not geometries:
+        return None
+    if len(geometries) == 1:
+        return geometries[0]
+    lines = [geom.get("coordinates") for geom in geometries if geom.get("coordinates")]
+    if not lines:
+        return None
+    return {"type": "MultiLineString", "coordinates": lines}
+
+
+def _enrich_corridor_geometry(
+    zone: dict[str, Any],
+    traffic_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    reference = zone.get("geometry")
+    snapped = _collect_snapped_geometries(zone, traffic_events)
+    display_geometry = _merge_line_geometries(snapped) or reference
+    display_coords = _geometry_coords_lonlat(display_geometry)
+    corridor_band = _line_buffer_polygon(display_coords) if display_coords else None
+    return {
+        "geometry": display_geometry,
+        "reference_geometry": reference,
+        "corridor_band": corridor_band,
+        "geometry_source": "snapped" if snapped else "reference",
+        "snapped_segments": len(snapped),
+    }
 
 
 def resolve_road_traffic_status(road_pl: str, traffic_events: list[dict[str, Any]]) -> dict[str, Any]:
@@ -665,13 +810,14 @@ def build_approach_zones(
             resolve_road_traffic_status(road, traffic) for road in (zone.get("roads_pl") or [])
         ]
         road_statuses = [item["status"] for item in roads_status]
+        corridor_geom = _enrich_corridor_geometry(zone, traffic)
         zones.append(
             {
                 **zone,
+                **corridor_geom,
                 "active_last_hour": active,
                 "moves_in_last_hour": terminal_info.get("moves_in_last_hour", 0),
                 "truck_demand_hint": hint,
-                "geometry": zone.get("geometry"),
                 "roads_status": roads_status,
                 "corridor_status": _worst_road_status(road_statuses),
                 "corridor_status_pl": ROAD_STATUS_LABELS_PL[_worst_road_status(road_statuses)],
@@ -752,7 +898,11 @@ def build_port_map_events(store: PortDataStore) -> list[dict[str, Any]]:
     )
 
 
-def build_port_summary(store: PortDataStore) -> dict[str, Any]:
+def build_port_summary(
+    store: PortDataStore,
+    *,
+    traffic_events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     port_events = build_port_map_events(store)
     calls = [e for e in port_events if e.get("record_kind") == "port_call"]
     activities = [e for e in port_events if e.get("record_kind") == "container_activity"]
@@ -775,7 +925,7 @@ def build_port_summary(store: PortDataStore) -> dict[str, Any]:
         "container_terminals_active": len(activities),
         "codeco_moves_on_map": len(codeco_moves),
         "terminals_catalog": build_terminals_catalog(store),
-        "approach_zones": build_approach_zones(store),
+        "approach_zones": build_approach_zones(store, traffic_events=traffic_events),
         "codeco_hourly_24h": build_codeco_hourly_24h(store),
         "top_terminals": [
             {

@@ -215,7 +215,7 @@ app = FastAPI(title="Port Traffic API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -264,10 +264,10 @@ def estimate_speed_from_intensity(intensity_vph: float) -> float:
     return 8.0
 
 
-def segment_centroid(geometry: dict[str, Any]) -> tuple[float, float]:
+def segment_centroid(geometry: dict[str, Any]) -> tuple[float, float] | None:
     coordinates = geometry.get("coordinates") or []
     if not coordinates:
-        return 0.0, 0.0
+        return None
     lons = [float(point[0]) for point in coordinates]
     lats = [float(point[1]) for point in coordinates]
     return sum(lats) / len(lats), sum(lons) / len(lons)
@@ -412,7 +412,12 @@ def build_gdynia_events(
         segment = segments.get(item["segment_id"], {})
         raw_geometry = segment.get("geometry") or {}
         geometry = normalize_segment_geometry(raw_geometry)
-        lat, lon = segment_centroid(raw_geometry)
+        if geometry is None:
+            continue
+        centroid = segment_centroid(raw_geometry) or segment_centroid(geometry)
+        if centroid is None:
+            continue
+        lat, lon = centroid
         events.append(
             {
                 "event_id": item["event_id"],
@@ -851,7 +856,7 @@ async def get_map_data() -> dict[str, Any]:
     return {
         "events": road_events,
         "port_events": port_events,
-        "port_summary": build_port_summary(port_data_store),
+        "port_summary": build_port_summary(port_data_store, traffic_events=road_events),
         "terminals_catalog": build_terminals_catalog(port_data_store),
         "approach_zones": build_approach_zones(port_data_store, traffic_events=road_events),
         "city_port_dashboard": build_city_port_dashboard(port_data_store, traffic_events=road_events),
