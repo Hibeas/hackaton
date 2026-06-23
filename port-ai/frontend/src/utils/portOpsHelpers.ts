@@ -1,8 +1,8 @@
 import type { CityPortDashboard, TerminalCatalogEntry } from '../types/portOps'
 
-/** MVP UI: Trójmiasto terminals and TIR zones only. */
-export const PORT_OPS_CITY_KEYS = new Set(['gdansk', 'gdynia'])
-export const PORT_OPS_CITIES = new Set(['Gdansk', 'Gdynia'])
+/** Terminals and TIR zones visible in port-ops panel per selected port tab. */
+export const PORT_OPS_CITY_KEYS = new Set(['gdansk', 'gdynia', 'szczecin', 'swinoujscie'])
+export const PORT_OPS_CITIES = new Set(['Gdansk', 'Gdynia', 'Szczecin', 'Swinoujscie'])
 
 export function filterPortOpsDashboard(
   dashboard: CityPortDashboard[] | undefined,

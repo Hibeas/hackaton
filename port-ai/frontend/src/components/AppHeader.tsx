@@ -7,6 +7,7 @@ import {
   forecastHorizonLabelParams,
   type DashboardMode,
 } from '../constants/forecast'
+import { useAuth } from '../context/AuthContext'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { VoiceDemoCallButton } from './VoiceDemoCallButton'
 
@@ -18,8 +19,6 @@ interface AppHeaderProps {
   onDashboardModeChange: (mode: DashboardMode) => void
   forecastHorizon: number
   onForecastHorizonChange: (horizon: number) => void
-  activeAlertCount: number
-  tomtomCount: number
   isLive: boolean
 }
 
@@ -31,11 +30,11 @@ export function AppHeader({
   onDashboardModeChange,
   forecastHorizon,
   onForecastHorizonChange,
-  activeAlertCount,
-  tomtomCount,
   isLive,
 }: AppHeaderProps) {
   const { t } = useTranslation()
+  const { t: tAuth } = useTranslation('auth')
+  const { user, logout } = useAuth()
 
   return (
     <header className="app-header">
@@ -87,21 +86,14 @@ export function AppHeader({
 
       <div className="app-header__stats">
         <span className={`live-dot${isLive ? ' live-dot--on' : ''}`} title={t('app.liveData')} />
-        {dashboardMode === 'live' ? (
-          <span className="stat-chip stat-chip--alert">
-            {t('app.alerts')}: <strong>{activeAlertCount}</strong>
-          </span>
-        ) : (
+        {dashboardMode === 'forecast' ? (
           <span className="stat-chip stat-chip--forecast">
             {t('engine.forecast.modeActive')}:{' '}
             <strong>
               {t(forecastHorizonLabelKey(forecastHorizon), forecastHorizonLabelParams(forecastHorizon))}
             </strong>
           </span>
-        )}
-        <span className="stat-chip">
-          TomTom: <strong>{tomtomCount}</strong>
-        </span>
+        ) : null}
       </div>
 
       <div className="app-header__actions">
@@ -109,6 +101,11 @@ export function AppHeader({
         <a className="app-header__link" href="#/corridor-editor">
           {t('corridorEditor.navLink')}
         </a>
+        {user ? (
+          <button type="button" className="app-header__link app-header__link--button" onClick={logout}>
+            {tAuth('login.logout')}
+          </button>
+        ) : null}
         <LanguageSwitcher />
       </div>
     </header>

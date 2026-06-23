@@ -23,7 +23,8 @@ CHART_TERMINALS: tuple[str, ...] = (*CODECO_TERMINALS, "PLSZZ")
 CITY_PORT_GROUPS: tuple[dict[str, Any], ...] = (
     {"key": "gdansk", "label": "Gdańsk", "cities": ("Gdansk",)},
     {"key": "gdynia", "label": "Gdynia", "cities": ("Gdynia",)},
-    {"key": "swinoujscie", "label": "Świnoujście", "cities": ("Swinoujscie", "Szczecin")},
+    {"key": "szczecin", "label": "Szczecin", "cities": ("Szczecin",)},
+    {"key": "swinoujscie", "label": "Świnoujście", "cities": ("Swinoujscie",)},
 )
 
 ROAD_STATUS_LABELS_PL: dict[str, str] = {

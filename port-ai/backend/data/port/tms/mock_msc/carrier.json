@@ -1,0 +1,7 @@
+{
+  "provider_id": "mock_msc",
+  "display_name": "Mock MSC Gate TMS",
+  "adapter": "mock_msc_v1",
+  "active": true,
+  "description_pl": "Symulowany adapter armatora MSC — dane slotów bramowych i spedycji w formacie wewnętrznym Port-AI."
+}

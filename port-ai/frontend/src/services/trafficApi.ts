@@ -2,6 +2,7 @@ import type {
   AnomaliesResponse,
   MapDataResponse,
 } from '../types/traffic'
+import { getStoredToken } from './authStorage'
 import type {
   BottlenecksResponse,
   CorridorsResponse,
@@ -12,7 +13,12 @@ import type { CorridorConfigResponse } from '../types/corridorConfig'
 import type { CorridorBbox, LatLng } from '../constants/ports'
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url)
+  const token = getStoredToken()
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  const response = await fetch(url, { headers })
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} for ${url}`)
   }

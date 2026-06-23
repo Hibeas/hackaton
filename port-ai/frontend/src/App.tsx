@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PORTS } from './constants/ports'
 import { CorridorBBoxEditor } from './components/CorridorBBoxEditor'
@@ -7,21 +7,31 @@ import { DashboardSidebar } from './components/DashboardSidebar'
 import { StatusBar } from './components/StatusBar'
 import { TrafficMap } from './components/TrafficMap'
 import { MapErrorBoundary } from './components/MapErrorBoundary'
+import { LoginPage } from './components/LoginPage'
+import { useAuth } from './context/AuthContext'
 import { useTrafficDashboard } from './hooks/useTrafficDashboard'
 import { filterUiPorts, resolveFocusGeometry } from './utils/corridorConfigHelpers'
 import { DEFAULT_FORECAST_HORIZON, type DashboardMode } from './constants/forecast'
 import './App.css'
 
-type AppView = 'dashboard' | 'editor'
+type AppView = 'dashboard' | 'editor' | 'login'
+
+function resolveViewFromHash(hash: string): AppView {
+  if (hash === '#/login') {
+    return 'login'
+  }
+  if (hash === '#/corridor-editor') {
+    return 'editor'
+  }
+  return 'dashboard'
+}
 
 function useAppView(): AppView {
-  const [view, setView] = useState<AppView>(() =>
-    window.location.hash === '#/corridor-editor' ? 'editor' : 'dashboard',
-  )
+  const [view, setView] = useState<AppView>(() => resolveViewFromHash(window.location.hash))
 
   useEffect(() => {
     const onHashChange = () => {
-      setView(window.location.hash === '#/corridor-editor' ? 'editor' : 'dashboard')
+      setView(resolveViewFromHash(window.location.hash))
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -59,12 +69,6 @@ function DashboardView() {
     [ports, selectedCorridorId, selectedPortId],
   )
 
-  const portAlertCount = useMemo(
-    () =>
-      (engineEvents?.events ?? []).filter((event) => event.port_id === selectedPortId).length,
-    [engineEvents, selectedPortId],
-  )
-
   const handlePortSelect = (portId: string) => {
     setSelectedPortId(portId)
     setSelectedCorridorId(null)
@@ -84,8 +88,6 @@ function DashboardView() {
         onDashboardModeChange={setDashboardMode}
         forecastHorizon={forecastHorizon}
         onForecastHorizonChange={(horizon) => setForecastHorizon(horizon as typeof DEFAULT_FORECAST_HORIZON)}
-        activeAlertCount={portAlertCount}
-        tomtomCount={mapData?.primary.incident_count ?? 0}
         isLive={!isLoading && !error}
       />
 
@@ -140,23 +142,60 @@ function DashboardView() {
   )
 }
 
+function AuthGate({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth()
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && window.location.hash !== '#/login') {
+      window.location.hash = '#/login'
+    }
+  }, [isAuthenticated, isLoading])
+
+  if (isLoading) {
+    return (
+      <div className="auth-loading">
+        <span className="map-placeholder__spinner" />
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null
+  }
+
+  return <>{children}</>
+}
+
 function App() {
   const view = useAppView()
+  const { isAuthenticated, isLoading } = useAuth()
+
+  if (view === 'login') {
+    if (!isLoading && isAuthenticated) {
+      window.location.hash = ''
+      return null
+    }
+    return <LoginPage />
+  }
 
   if (view === 'editor') {
     return (
-      <CorridorBBoxEditor
-        onBack={() => {
-          window.location.hash = ''
-        }}
-      />
+      <AuthGate>
+        <CorridorBBoxEditor
+          onBack={() => {
+            window.location.hash = ''
+          }}
+        />
+      </AuthGate>
     )
   }
 
   return (
-    <div className="app-shell">
-      <DashboardView />
-    </div>
+    <AuthGate>
+      <div className="app-shell">
+        <DashboardView />
+      </div>
+    </AuthGate>
   )
 }
 

@@ -31,6 +31,8 @@ import { filterUiPorts } from '../utils/corridorConfigHelpers'
 const PORT_CENTERS: Record<string, [number, number]> = {
   gdynia: [54.52, 18.53],
   gdansk: [54.36, 18.65],
+  szczecin: [53.43, 14.55],
+  swinoujscie: [53.91, 14.25],
 }
 
 const GEOFENCE_TYPES: GeofenceType[] = [

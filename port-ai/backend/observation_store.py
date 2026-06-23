@@ -46,6 +46,9 @@ ON corridor_observations (corridor_id, observed_at DESC)
 """
 
 
+from database_utils import connect_postgres
+
+
 def normalize_database_url(raw_url: str) -> str:
     """Accept SQLAlchemy-style URLs and plain postgres:// from Supabase."""
     url = raw_url.strip()
@@ -109,7 +112,7 @@ class ObservationStore:
         self.backend = "postgres"
         self._psycopg2 = psycopg2
         self._psycopg2_extras = psycopg2.extras
-        self._pg_conn = psycopg2.connect(database_url)
+        self._pg_conn = connect_postgres(database_url)
         self._pg_conn.autocommit = True
 
         with self._pg_conn.cursor() as cursor:

@@ -244,7 +244,7 @@
   "voice": {
     "demoCall": "Test call",
     "demoCallHint": "Temporary demo: ElevenLabs + Twilio voice alert",
-    "demoMessage": "Attention! The dean is on the way. Get ready — they are about to enter the hackathon room.",
+    "demoMessage": "Attention. Port AI detected a sudden delay spike near Baltic Hub. About 15 minutes to BCT gate — check your slot.",
     "calling": "Calling…",
     "callOk": "Sent",
     "callError": "Error",

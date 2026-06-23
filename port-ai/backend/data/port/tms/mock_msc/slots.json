@@ -1,0 +1,77 @@
+{
+  "provider_id": "mock_msc",
+  "slot_templates": [
+    {
+      "slot_id": "SLOT-DCT-0800",
+      "terminal_code": "DCT",
+      "port_id": "gdynia",
+      "start_hour": 8,
+      "start_minute": 0,
+      "duration_minutes": 30,
+      "container_count": 2,
+      "booking_ref": "MSC-BKG-2024-884",
+      "status": "confirmed",
+      "corridor_ids": ["trasa_sucharskiego", "tunel_martwa_wisla"]
+    },
+    {
+      "slot_id": "SLOT-DCT-1400",
+      "terminal_code": "DCT",
+      "port_id": "gdynia",
+      "start_hour": 14,
+      "start_minute": 0,
+      "duration_minutes": 30,
+      "container_count": 1,
+      "booking_ref": "MSC-BKG-2024-901",
+      "status": "confirmed",
+      "corridor_ids": ["trasa_sucharskiego", "wezel_s7_sucharskiego"]
+    },
+    {
+      "slot_id": "SLOT-BCT-0930",
+      "terminal_code": "BCT",
+      "port_id": "gdynia",
+      "start_hour": 9,
+      "start_minute": 30,
+      "duration_minutes": 30,
+      "container_count": 2,
+      "booking_ref": "MSC-BKG-2024-712",
+      "status": "confirmed",
+      "corridor_ids": ["baltic_hub_gate", "marynarki_polskiej"]
+    },
+    {
+      "slot_id": "SLOT-GCT-1000",
+      "terminal_code": "GCT",
+      "port_id": "gdynia",
+      "start_hour": 10,
+      "start_minute": 0,
+      "duration_minutes": 30,
+      "container_count": 3,
+      "booking_ref": "MSC-BKG-2024-556",
+      "status": "confirmed",
+      "corridor_ids": ["estakada_kwiatkowskiego", "janka_wisniewskiego"]
+    },
+    {
+      "slot_id": "SLOT-GCT-1500",
+      "terminal_code": "GCT",
+      "port_id": "gdynia",
+      "start_hour": 15,
+      "start_minute": 0,
+      "duration_minutes": 30,
+      "container_count": 2,
+      "booking_ref": "MSC-BKG-2024-603",
+      "status": "confirmed",
+      "corridor_ids": ["ul_polska", "s6_wezel_estakada"]
+    },
+    {
+      "slot_id": "SLOT-PLSZZ-1100",
+      "terminal_code": "PLSZZ",
+      "port_id": "szczecin",
+      "start_hour": 11,
+      "start_minute": 0,
+      "duration_minutes": 45,
+      "container_count": 1,
+      "booking_ref": "MSC-BKG-2024-441",
+      "status": "confirmed",
+      "corridor_ids": ["s3_swinoujscie", "wezel_s3_port"]
+    }
+  ]
+}

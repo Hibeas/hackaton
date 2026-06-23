@@ -33,7 +33,7 @@
 }
 
 .port-pill {
-  padding: 7px 14px;
+  padding: 7px 10px;
   border: none;
   border-radius: calc(var(--radius-md) - 2px);
   background: transparent;
@@ -197,6 +197,17 @@
   background: var(--color-surface-hover);
   color: var(--color-text);
   border-color: var(--color-border);
+}
+
+.app-header__link--button {
+  cursor: pointer;
+}
+
+.auth-loading {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .voice-demo__btn {

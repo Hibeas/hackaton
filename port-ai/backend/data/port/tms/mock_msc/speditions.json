@@ -1,0 +1,37 @@
+{
+  "provider_id": "mock_msc",
+  "speditions": [
+    {
+      "spedition_id": "SPD-TRANS-BALTIC",
+      "company_name": "Trans-Baltic Sp. z o.o.",
+      "contact_name": "Jan Kowalski",
+      "phone_e164": "+48728538889",
+      "email": "dispatch@trans-baltic.pl",
+      "slot_ids": ["SLOT-DCT-0800", "SLOT-DCT-1400"]
+    },
+    {
+      "spedition_id": "SPD-NORD-LOG",
+      "company_name": "NordLog Spedition",
+      "contact_name": "Anna Nowak",
+      "phone_e164": "+48728538889",
+      "email": "ops@nordlog.pl",
+      "slot_ids": ["SLOT-BCT-0930"]
+    },
+    {
+      "spedition_id": "SPD-GDY-TIR",
+      "company_name": "Gdynia TIR Express",
+      "contact_name": "Piotr Wiśniewski",
+      "phone_e164": "+48728538889",
+      "email": "tir@gdy-express.pl",
+      "slot_ids": ["SLOT-GCT-1000", "SLOT-GCT-1500"]
+    },
+    {
+      "spedition_id": "SPD-WEST-PORT",
+      "company_name": "West Port Cargo",
+      "contact_name": "Marek Lewandowski",
+      "phone_e164": "+48728538889",
+      "email": "cargo@westport.pl",
+      "slot_ids": ["SLOT-PLSZZ-1100"]
+    }
+  ]
+}

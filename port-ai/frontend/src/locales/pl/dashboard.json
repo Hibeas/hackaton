@@ -244,7 +244,7 @@
   "voice": {
     "demoCall": "Test połączenia",
     "demoCallHint": "Tymczasowy demo: alert głosowy ElevenLabs + Twilio",
-    "demoMessage": "Uwaga! Jedzie dziekan. Przygotujcie się — za chwilę wchodzi na salę hackathonu.",
+    "demoMessage": "Uwaga. Port A I wykrył nagły wzrost opóźnień w rejonie Baltic Hub. Prognoza około piętnastu minut na dojeździe do BCT. Sprawdź slot bramowy.",
     "calling": "Dzwonię…",
     "callOk": "Wysłano",
     "callError": "Błąd",

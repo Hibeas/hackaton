@@ -14,7 +14,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 import httpx
 import xmltodict
 from aiokafka import AIOKafkaProducer
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -38,10 +38,25 @@ from port_events import (
     build_port_summary,
     build_terminals_catalog,
 )
+from demo_baltic_spike_service import run_baltic_hub_spike_demo
 from hybrid_delay_forecaster import DEFAULT_HORIZONS, build_forecast_response
 from kafka_prediction_buffer import kafka_consumer_loop, kafka_prediction_buffer
 from tomtom_service import TOMTOM_API_KEY, build_heatmap_points, collect_tomtom_events
 from traffic_ml_predictor import load_model, ml_enabled, model_path, preload_model, reset_model
+from auth_service import (
+    auth_configured,
+    get_current_user,
+    login_user,
+    register_user,
+)
+from user_store import user_store
+from slot_dispatch_service import (
+    SLOT_DISPATCH_AUTO_ENABLED,
+    SLOT_DISPATCH_MIN_DELAY_SEC,
+    slot_dispatch_service,
+)
+from tms.database import tms_database
+from tms.store import tms_store
 from voice_call_service import is_voice_call_configured, make_automated_voice_call, voice_call_mode
 
 logging.basicConfig(level=logging.INFO)
@@ -187,11 +202,30 @@ anomaly_engine = AnomalyEngine(observation_store)
 port_demand_baseline = load_baseline()
 
 
+async def maybe_run_slot_dispatch() -> None:
+    """After cache refresh: high-risk forecast → gate slots → spedition voice calls."""
+    if not SLOT_DISPATCH_AUTO_ENABLED:
+        return
+    if not is_voice_call_configured():
+        return
+    try:
+        forecast_payload = build_forecast_response(observation_store=observation_store)
+        result = await slot_dispatch_service.run_auto_dispatch(
+            forecasts=forecast_payload.get("forecasts") or [],
+        )
+        called = sum(1 for item in result.get("calls") or [] if item.get("status") == "called")
+        if called:
+            logger.info("Slot dispatch auto-run placed %s call(s)", called)
+    except Exception as exc:
+        logger.warning("Slot dispatch auto-run failed: %s", exc)
+
+
 async def cache_refresh_loop() -> None:
     while True:
         await asyncio.sleep(CACHE_REFRESH_INTERVAL_SECONDS)
         try:
             await traffic_cache.refresh()
+            await maybe_run_slot_dispatch()
         except Exception as exc:
             logger.warning("Background cache refresh failed: %s", exc)
 
@@ -922,6 +956,15 @@ async def get_map_data() -> dict[str, Any]:
         "age_seconds": traffic_cache.age_seconds(),
         "refresh_interval_seconds": CACHE_REFRESH_INTERVAL_SECONDS,
         "delay_forecasts": delay_forecasts,
+        "slot_dispatch": {
+            "auto_enabled": SLOT_DISPATCH_AUTO_ENABLED,
+            "min_delay_sec": SLOT_DISPATCH_MIN_DELAY_SEC,
+            "voice_configured": is_voice_call_configured(),
+            "last_plan": slot_dispatch_service.build_dispatch_plan(
+                forecasts=delay_forecasts.get("forecasts") or [],
+            ),
+            "recent_calls": slot_dispatch_service.recent_history(limit=5),
+        },
         "sources": {
             "tomtom": {
                 "incident_count": len(primary),
@@ -1180,6 +1223,140 @@ class VoiceDemoCallRequest(BaseModel):
     message: str | None = Field(default=None, max_length=500)
 
 
+class AuthRegisterRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+    password: str = Field(..., min_length=8, max_length=128)
+    phone_e164: str = Field(..., min_length=8, max_length=20, description="E.164 phone, e.g. +48123456789")
+    full_name: str | None = Field(default=None, max_length=120)
+
+
+class AuthLoginRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+@app.post("/api/v1/auth/register")
+async def auth_register(body: AuthRegisterRequest) -> dict[str, Any]:
+    if not auth_configured():
+        raise HTTPException(status_code=503, detail="auth_not_configured")
+    try:
+        return register_user(
+            email=body.email,
+            password=body.password,
+            phone_e164=body.phone_e164,
+            full_name=body.full_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/auth/login")
+async def auth_login(body: AuthLoginRequest) -> dict[str, Any]:
+    if not auth_configured():
+        raise HTTPException(status_code=503, detail="auth_not_configured")
+    try:
+        return login_user(email=body.email, password=body.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/auth/me")
+async def auth_me(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    return current_user
+
+
+@app.get("/api/v1/tms/snapshot")
+async def get_tms_snapshot() -> dict[str, Any]:
+    """Canonical TMS snapshot (mock carrier adapters aggregated)."""
+    return tms_store.snapshot()
+
+
+@app.get("/api/v1/tms/dispatch/plan")
+async def get_slot_dispatch_plan(
+    horizons: str = Query(
+        default="10,15,20,30,45,60,120,180",
+        description="Comma-separated forecast horizons in minutes",
+    ),
+) -> dict[str, Any]:
+    """Preview: high-risk forecasts → today's gate slots → speditions + voice script."""
+    parsed_horizons = parse_horizons_param(horizons)
+    forecast_payload = build_forecast_response(
+        observation_store=observation_store,
+        horizons=parsed_horizons,
+    )
+    return slot_dispatch_service.build_dispatch_plan(
+        forecasts=forecast_payload.get("forecasts") or [],
+    )
+
+
+class SlotDispatchRunRequest(BaseModel):
+    dry_run: bool = Field(default=False, description="Build plan only, do not place calls")
+    force: bool = Field(default=False, description="Bypass per-spedition call cooldown")
+    horizons: str | None = Field(default=None, description="Override horizons CSV")
+
+
+@app.post("/api/v1/tms/dispatch/run")
+async def run_slot_dispatch(body: SlotDispatchRunRequest | None = None) -> dict[str, Any]:
+    """Execute slot dispatch (auto-call speditions for high-risk slot windows)."""
+    if not is_voice_call_configured() and not (body and body.dry_run):
+        raise HTTPException(status_code=503, detail="voice_not_configured")
+
+    horizons = parse_horizons_param(body.horizons) if body and body.horizons else DEFAULT_HORIZONS
+    forecast_payload = build_forecast_response(
+        observation_store=observation_store,
+        horizons=horizons,
+    )
+    try:
+        return await slot_dispatch_service.run_auto_dispatch(
+            forecasts=forecast_payload.get("forecasts") or [],
+            dry_run=bool(body and body.dry_run),
+            force=bool(body and body.force),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Slot dispatch run failed")
+        raise HTTPException(status_code=500, detail="slot_dispatch_failed") from exc
+
+
+@app.get("/api/v1/tms/dispatch/history")
+async def get_slot_dispatch_history(limit: int = Query(default=20, ge=1, le=100)) -> dict[str, Any]:
+    return {"calls": slot_dispatch_service.recent_history(limit=limit)}
+
+
+class BalticHubSpikeRequest(BaseModel):
+    phone_e164: str | None = Field(default=None, description="Override call target (default VOICE_CALL_DEMO_TO)")
+    dry_run: bool = Field(default=False)
+    force: bool = Field(default=True, description="Bypass call cooldown")
+
+
+@app.post("/api/v1/demo/baltic-hub-spike")
+async def demo_baltic_hub_spike(body: BalticHubSpikeRequest | None = None) -> dict[str, Any]:
+    """One-shot demo: inject Baltic Hub delay spike, book slot for now, call spedition."""
+    phone = (
+        body.phone_e164
+        if body and body.phone_e164
+        else os.environ.get("VOICE_CALL_DEMO_TO", "+48728538889")
+    ).strip()
+    if not body or not body.dry_run:
+        if not is_voice_call_configured():
+            raise HTTPException(status_code=503, detail="voice_not_configured")
+    try:
+        return await run_baltic_hub_spike_demo(
+            observation_store=observation_store,
+            phone_e164=phone,
+            dry_run=bool(body and body.dry_run),
+            force_call=bool(body.force) if body else True,
+        )
+    except Exception as exc:
+        logger.exception("Baltic Hub spike demo failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/v1/voice/demo-call")
 async def trigger_voice_demo_call(body: VoiceDemoCallRequest | None = None) -> dict[str, Any]:
     """Temporary demo: outbound voice alert via ElevenLabs + Twilio."""
@@ -1193,7 +1370,11 @@ async def trigger_voice_demo_call(body: VoiceDemoCallRequest | None = None) -> d
     message = (
         body.message
         if body and body.message
-        else "Uwaga! Jedzie dziekan. Przygotujcie się — za chwilę wchodzi na salę hackathonu."
+        else (
+            "Uwaga. Port A I wykrył nagły wzrost opóźnień w rejonie Baltic Hub w Gdańsku. "
+            "Prognoza około piętnastu minut na dojeździe do terminala BCT. "
+            "Sprawdź slot bramowy i rozważ opóźnienie wyjazdu."
+        )
     )
 
     try:
@@ -1230,5 +1411,15 @@ async def health() -> dict[str, Any]:
         "voice": {
             "configured": is_voice_call_configured(),
             "mode": voice_call_mode(),
+        },
+        "auth": {
+            "configured": auth_configured(),
+            "database": user_store.backend_name,
+        },
+        "tms": {
+            "database": tms_database.backend_name,
+            "providers": tms_store.list_providers(),
+            "slot_dispatch_auto": SLOT_DISPATCH_AUTO_ENABLED,
+            "slot_dispatch_min_delay_sec": SLOT_DISPATCH_MIN_DELAY_SEC,
         },
     }
