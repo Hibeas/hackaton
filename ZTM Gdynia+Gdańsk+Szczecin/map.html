@@ -378,6 +378,154 @@
         #port-ops-panel .ops-item.warn {
             border-left-color: #d97706;
         }
+        #engine-panel {
+            position: fixed;
+            top: 56px;
+            left: 12px;
+            width: min(300px, calc(100vw - 20px));
+            max-height: 42vh;
+            background: rgba(255, 255, 255, 0.97);
+            border: 1px solid #dde3ea;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+            color: #1e293b;
+            pointer-events: auto;
+        }
+        #engine-panel.collapsed {
+            max-height: none;
+        }
+        #engine-panel.collapsed #engine-panel-body {
+            display: none;
+        }
+        #engine-panel .panel-header {
+            padding: 8px 10px;
+            border-bottom: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+        #engine-panel.collapsed .panel-header {
+            border-bottom: none;
+        }
+        #engine-panel #engine-panel-body {
+            overflow-y: auto;
+            padding: 8px 10px 10px;
+        }
+        #engine-panel .engine-port-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        #engine-panel .engine-port-tab {
+            flex: 1;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #475569;
+            padding: 5px 4px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #engine-panel .engine-port-tab.active {
+            background: #1565c0;
+            border-color: #1565c0;
+            color: #fff;
+        }
+        #engine-panel .engine-event-card {
+            border-left: 3px solid #64748b;
+            padding: 6px 8px;
+            margin-bottom: 6px;
+            background: #fafafa;
+            border-radius: 4px;
+            line-height: 1.35;
+        }
+        #engine-panel .engine-event-card.dispatch-hold {
+            border-left-color: #dc2626;
+            background: #fef2f2;
+        }
+        #engine-panel .engine-event-card.dispatch-caution {
+            border-left-color: #d97706;
+            background: #fffbeb;
+        }
+        #engine-panel .engine-event-card.dispatch-monitor {
+            border-left-color: #1565c0;
+        }
+        #engine-panel .engine-event-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 6px;
+            margin-bottom: 3px;
+        }
+        #engine-panel .engine-corridor-name {
+            font-weight: 700;
+            color: #0f172a;
+        }
+        #engine-panel .dispatch-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 5px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        #engine-panel .dispatch-badge.hold {
+            background: #dc2626;
+            color: #fff;
+        }
+        #engine-panel .dispatch-badge.caution {
+            background: #d97706;
+            color: #fff;
+        }
+        #engine-panel .dispatch-badge.monitor {
+            background: #e2e8f0;
+            color: #334155;
+        }
+        #engine-panel .engine-event-type {
+            font-size: 10px;
+            color: #7c3aed;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        #engine-panel .engine-summary {
+            color: #475569;
+            font-size: 10px;
+        }
+        #engine-panel .engine-meta {
+            margin-top: 4px;
+            font-size: 9px;
+            color: #64748b;
+        }
+        #engine-panel .panel-subtitle {
+            margin: 3px 0 0;
+            font-size: 10px;
+            color: #64748b;
+            line-height: 1.3;
+        }
+        #engine-panel .incident-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            margin-left: 6px;
+            border-radius: 999px;
+            background: #7c3aed;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        #engine-panel .incident-count-badge.zero {
+            background: #94a3b8;
+        }
+        #engine-panel .more-incidents {
+            font-size: 10px;
+            color: #64748b;
+            text-align: center;
+            padding: 2px 0;
+        }
         #update-toast.tir-alert {
             background: #b45309;
         }
@@ -633,6 +781,19 @@
             <div id="hourly-incident-list"></div>
         </div>
     </aside>
+    <aside id="engine-panel" class="collapsed" aria-label="Silnik anomalii portowych">
+        <div class="panel-header">
+            <button type="button" class="panel-toggle" id="engine-panel-toggle" aria-expanded="false">
+                <span>Silnik anomalii<span class="incident-count-badge zero" id="engine-event-count">0</span></span>
+                <span class="chevron" id="engine-panel-chevron">▸</span>
+            </button>
+            <p class="panel-subtitle" id="engine-panel-meta">Ładowanie…</p>
+        </div>
+        <div id="engine-panel-body">
+            <div class="engine-port-tabs" id="engine-port-tabs" role="tablist"></div>
+            <div id="engine-event-list"></div>
+        </div>
+    </aside>
     <div id="status-bar">Oczekiwanie na pierwsze pobranie…</div>
     <nav id="city-nav" aria-label="Nawigacja po miastach">
         <button type="button" data-city="gdynia" class="active">Gdynia</button>
@@ -666,6 +827,7 @@
         const containerActivityLayer = L.layerGroup().addTo(map);
         const codecoMovesLayer = L.layerGroup().addTo(map);
         const approachZonesLayer = L.layerGroup().addTo(map);
+        const engineCorridorsLayer = L.layerGroup();
         let segmentsGeoJsonLayer = null;
         let incidentsGeoJsonLayer = null;
         L.control.layers(
@@ -678,6 +840,7 @@
                 "Codeco — terminale": containerActivityLayer,
                 "Codeco — ostatnie ruchy": codecoMovesLayer,
                 "Korytarze dojazdu TIR": approachZonesLayer,
+                "Korytarze silnika (bbox)": engineCorridorsLayer,
             },
             { collapsed: true, position: "topleft" },
         ).addTo(map);
@@ -697,6 +860,14 @@
         let previousZoneActivity = null;
         let tirAlertsInitialized = false;
         let recentlyActivatedZoneIds = new Set();
+        let lastMapPayload = null;
+        let activeEnginePort = "gdansk";
+
+        const ENGINE_PORT_GROUPS = [
+            { key: "gdansk", label: "Gdańsk", portIds: ["gdansk"] },
+            { key: "gdynia", label: "Gdynia", portIds: ["gdynia"] },
+            { key: "swinoujscie", label: "Świnoujście", portIds: ["swinoujscie", "szczecin"] },
+        ];
         const CODECO_TERMINAL_COLORS = {
             DCT: "#1565c0",
             GCT: "#2e7d32",
@@ -1403,6 +1574,184 @@
             setTimeout(() => map.invalidateSize(), 50);
         });
 
+        function enginePortGroupForEvent(event) {
+            const portId = (event.port_id || "").toLowerCase();
+            return ENGINE_PORT_GROUPS.find((group) => group.portIds.includes(portId)) || null;
+        }
+
+        function filterEngineEventsByPort(events, portKey) {
+            const group = ENGINE_PORT_GROUPS.find((item) => item.key === portKey);
+            if (!group) {
+                return events || [];
+            }
+            return (events || []).filter((event) => group.portIds.includes((event.port_id || "").toLowerCase()));
+        }
+
+        function formatDispatchLabel(impact) {
+            if (impact === "HOLD_DISPATCH") return "Wstrzymaj dispatch";
+            if (impact === "CAUTION") return "Ostrożnie";
+            if (impact === "MONITOR") return "Monitoruj";
+            return impact || "—";
+        }
+
+        function formatPortContextLabel(context) {
+            if (context === "expected_gate_peak") return "Szczyt bramy (Codeco)";
+            if (context === "low_port_demand") return "Niski popyt portowy";
+            if (context === "moderate_port_demand") return "Umiarkowany popyt";
+            return "Kontekst nieznany";
+        }
+
+        function dispatchCardClass(impact) {
+            if (impact === "HOLD_DISPATCH") return "dispatch-hold";
+            if (impact === "CAUTION") return "dispatch-caution";
+            return "dispatch-monitor";
+        }
+
+        function dispatchBadgeClass(impact) {
+            if (impact === "HOLD_DISPATCH") return "hold";
+            if (impact === "CAUTION") return "caution";
+            return "monitor";
+        }
+
+        function renderEnginePortTabs() {
+            const tabsEl = document.getElementById("engine-port-tabs");
+            tabsEl.innerHTML = "";
+            ENGINE_PORT_GROUPS.forEach((group) => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = `engine-port-tab${group.key === activeEnginePort ? " active" : ""}`;
+                btn.textContent = group.label;
+                btn.dataset.portKey = group.key;
+                btn.addEventListener("click", () => {
+                    activeEnginePort = group.key;
+                    renderEnginePortTabs();
+                    if (lastMapPayload) {
+                        renderEnginePanel(lastMapPayload);
+                        drawEngineCorridors(
+                            lastMapPayload.engine_corridor_config,
+                            filterEngineEventsByPort(lastMapPayload.engine_events, activeEnginePort),
+                            activeEnginePort,
+                        );
+                    }
+                });
+                tabsEl.appendChild(btn);
+            });
+        }
+
+        function drawEngineCorridors(config, events, portKey) {
+            engineCorridorsLayer.clearLayers();
+            if (!config?.ports) {
+                return;
+            }
+            const group = ENGINE_PORT_GROUPS.find((item) => item.key === portKey);
+            if (!group) {
+                return;
+            }
+            const eventCorridorIds = new Set((events || []).map((event) => event.corridor_id));
+
+            config.ports
+                .filter((port) => group.portIds.includes(port.id))
+                .forEach((port) => {
+                    (port.corridors || []).forEach((corridor) => {
+                        let latlngs = [];
+                        if (Array.isArray(corridor.polygon) && corridor.polygon.length) {
+                            latlngs = corridor.polygon.map(([lat, lon]) => [lat, lon]);
+                        } else if (corridor.bbox) {
+                            const bbox = corridor.bbox;
+                            latlngs = [
+                                [bbox.min_lat, bbox.min_lon],
+                                [bbox.min_lat, bbox.max_lon],
+                                [bbox.max_lat, bbox.max_lon],
+                                [bbox.max_lat, bbox.min_lon],
+                            ];
+                        }
+                        if (!latlngs.length) {
+                            return;
+                        }
+                        const hasEvent = eventCorridorIds.has(corridor.id);
+                        const layer = L.polygon(latlngs, {
+                            color: hasEvent ? "#dc2626" : "#64748b",
+                            weight: hasEvent ? 2.5 : 1.5,
+                            fillColor: hasEvent ? "#fca5a5" : "#94a3b8",
+                            fillOpacity: hasEvent ? 0.28 : 0.08,
+                            dashArray: hasEvent ? null : "4 4",
+                        });
+                        layer.bindPopup(
+                            `<strong>${corridor.name}</strong><br>${port.name}` +
+                                (hasEvent ? "<br><em>Aktywna anomalia silnika</em>" : ""),
+                        );
+                        engineCorridorsLayer.addLayer(layer);
+                    });
+                });
+        }
+
+        function renderEnginePanel(payload) {
+            const allEvents = payload.engine_events || [];
+            const filtered = filterEngineEventsByPort(allEvents, activeEnginePort);
+            const bottlenecks = payload.engine_bottlenecks || [];
+            const evaluatedAt = payload.engine_evaluated_at
+                ? new Date(payload.engine_evaluated_at).toLocaleTimeString("pl-PL", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                  })
+                : "—";
+
+            const countBadge = document.getElementById("engine-event-count");
+            countBadge.textContent = String(filtered.length);
+            countBadge.classList.toggle("zero", filtered.length === 0);
+
+            const portLabel = ENGINE_PORT_GROUPS.find((item) => item.key === activeEnginePort)?.label || "?";
+            document.getElementById("engine-panel-meta").textContent =
+                filtered.length > 0
+                    ? `${filtered.length} zdarzeń · ${portLabel} · ${evaluatedAt}`
+                    : `Brak anomalii · ${portLabel} · ${evaluatedAt}`;
+
+            const listEl = document.getElementById("engine-event-list");
+            listEl.innerHTML = "";
+
+            if (!filtered.length) {
+                listEl.innerHTML =
+                    '<div class="more-incidents">Brak aktywnych anomalii korytarzowych dla tego portu.</div>';
+                return;
+            }
+
+            filtered
+                .slice()
+                .sort((a, b) => (b.severity || 0) - (a.severity || 0))
+                .forEach((event) => {
+                    const card = document.createElement("article");
+                    const impact = event.dispatch_impact || "MONITOR";
+                    card.className = `engine-event-card ${dispatchCardClass(impact)}`;
+                    card.innerHTML = `
+                        <div class="engine-event-header">
+                            <span class="engine-corridor-name">${event.roadSegment || event.corridor_id || "?"}</span>
+                            <span class="dispatch-badge ${dispatchBadgeClass(impact)}">${formatDispatchLabel(impact)}</span>
+                        </div>
+                        <div class="engine-event-type">${event.eventType || "?"}</div>
+                        <div class="engine-summary">${truncateText(event.summary || "Brak opisu.", 140)}</div>
+                        <div class="engine-meta">
+                            Severity ${event.severity ?? "?"} · pewność ${Math.round((event.confidence || 0) * 100)}%
+                            · ${formatPortContextLabel(event.port_context)}
+                            ${bottlenecks.includes(event.corridor_id) ? " · wąskie gardło 1h" : ""}
+                        </div>
+                    `;
+                    listEl.appendChild(card);
+                });
+        }
+
+        document.getElementById("engine-panel-toggle").addEventListener("click", () => {
+            const panel = document.getElementById("engine-panel");
+            const collapsed = panel.classList.toggle("collapsed");
+            document.getElementById("engine-panel-chevron").textContent = collapsed ? "▸" : "▾";
+            document.getElementById("engine-panel-toggle").setAttribute("aria-expanded", String(!collapsed));
+            if (!collapsed && !engineCorridorsLayer._map) {
+                engineCorridorsLayer.addTo(map);
+            }
+            setTimeout(() => map.invalidateSize(), 50);
+        });
+
+        renderEnginePortTabs();
+
         function buildPortCallPopup(event) {
             const ops = event.context?.port_ops || {};
             const metrics = event.metrics || {};
@@ -1959,6 +2308,13 @@
                 incidentsDrawn = drawIncidents(incidentEvents);
                 drawn += incidentsDrawn;
                 renderHourlyReportPanel(payload);
+                lastMapPayload = payload;
+                renderEnginePanel(payload);
+                drawEngineCorridors(
+                    payload.engine_corridor_config,
+                    filterEngineEventsByPort(payload.engine_events, activeEnginePort),
+                    activeEnginePort,
+                );
 
                 if (!hasLoadedOnce && segmentsDrawn > 0) {
                     zoomToCity("gdynia");
@@ -1969,7 +2325,7 @@
                     ? Math.round(payload.age_seconds)
                     : "?";
                 const baseStatus =
-                    `Odcinki: ${segmentsDrawn} | Autobusy: ${vehiclesDrawn} | Incydenty: ${incidentsDrawn} | Terminale: ${(payload.terminals_catalog || []).filter(t => t.active_last_hour).length}/${(payload.terminals_catalog || []).length} | Strefy TIR: ${zonesDrawn} | Gardła: ${(payload.bottlenecks || []).length} | Wiek: ${age} s | ${now}`;
+                    `Odcinki: ${segmentsDrawn} | Autobusy: ${vehiclesDrawn} | Incydenty: ${incidentsDrawn} | Silnik: ${(payload.engine_events || []).length} | Terminale: ${(payload.terminals_catalog || []).filter(t => t.active_last_hour).length}/${(payload.terminals_catalog || []).length} | Strefy TIR: ${zonesDrawn} | Gardła: ${(payload.bottlenecks || []).length} | Wiek: ${age} s | ${now}`;
                 startCountdown(baseStatus);
                 console.log(`Zaktualizowano dane o ruchu: ${now} (${drawn} punktów, wiek ${age}s)`);
 

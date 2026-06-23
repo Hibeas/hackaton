@@ -14,6 +14,9 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from anomaly_engine import AnomalyEngine
+from corridor_service import build_corridor_snapshots, load_corridor_config
+from observation_store import ObservationStore
 from port_data_loader import port_data_store
 from port_events import (
     build_approach_zones,
@@ -23,6 +26,7 @@ from port_events import (
     build_port_summary,
     build_terminals_catalog,
 )
+from port_demand import analyze_cities, load_baseline
 from traffic_fusion import fuse_traffic_events
 from traffic_history import TrafficHistory
 from traffic_intelligence import (
@@ -33,6 +37,7 @@ from traffic_intelligence import (
     detect_anomalies,
 )
 from tomtom_traffic import collect_tomtom_events, get_tomtom_api_key
+from tomtom_routing import build_route_forecast, compute_bypass, routing_enabled
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,10 +51,65 @@ REQUEST_TIMEOUT = 15.0
 CACHE_REFRESH_INTERVAL_SECONDS = 30.0
 PORT_DATA_REFRESH_INTERVAL_SECONDS = 300.0
 GDYNIA_API_UPDATE_INTERVAL_SECONDS = 300.0
-KAFKA_BOOTSTRAP_SERVERS = "localhost:8081"
-KAFKA_TOPIC = "port-traffic-events"
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+class KafkaConfig:
+    """Kafka producer settings (override via environment variables)."""
+
+    def __init__(self) -> None:
+        self.enabled = _env_bool("KAFKA_ENABLED", True)
+        self.bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+        self.topic = os.environ.get("KAFKA_TOPIC", "port-traffic-events")
+        self.client_id = os.environ.get("KAFKA_CLIENT_ID", "port-traffic-api")
+        self.auto_publish_on_refresh = _env_bool("KAFKA_AUTO_PUBLISH", False)
+        self.acks = os.environ.get("KAFKA_ACKS", "all")
+        self.compression_type = os.environ.get("KAFKA_COMPRESSION_TYPE") or None
+        self.security_protocol = os.environ.get("KAFKA_SECURITY_PROTOCOL")
+        self.sasl_mechanism = os.environ.get("KAFKA_SASL_MECHANISM")
+        self.sasl_username = os.environ.get("KAFKA_SASL_USERNAME")
+        self.sasl_password = os.environ.get("KAFKA_SASL_PASSWORD")
+
+    def producer_kwargs(self) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "bootstrap_servers": self.bootstrap_servers,
+            "client_id": self.client_id,
+            "acks": self.acks,
+            "value_serializer": lambda value: json.dumps(value, ensure_ascii=False).encode("utf-8"),
+            "key_serializer": lambda key: key.encode("utf-8") if key else None,
+        }
+        if self.compression_type:
+            kwargs["compression_type"] = self.compression_type
+        if self.security_protocol:
+            kwargs["security_protocol"] = self.security_protocol
+        if self.sasl_mechanism:
+            kwargs["sasl_mechanism"] = self.sasl_mechanism
+        if self.sasl_username and self.sasl_password:
+            kwargs["sasl_plain_username"] = self.sasl_username
+            kwargs["sasl_plain_password"] = self.sasl_password
+        return kwargs
+
+    def status(self, *, connected: bool, last_published: int | None = None) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "connected": connected,
+            "bootstrap_servers": self.bootstrap_servers,
+            "topic": self.topic,
+            "client_id": self.client_id,
+            "auto_publish_on_refresh": self.auto_publish_on_refresh,
+            "last_published_count": last_published,
+        }
+
+
+kafka_config = KafkaConfig()
 kafka_producer: AIOKafkaProducer | None = None
+kafka_last_published_count: int | None = None
 cache_refresh_task: asyncio.Task[None] | None = None
 gdynia_watch_task: asyncio.Task[None] | None = None
 port_data_refresh_task: asyncio.Task[None] | None = None
@@ -58,6 +118,8 @@ port_data_refresh_task: asyncio.Task[None] | None = None
 class TrafficCache:
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
+        self.corridor_snapshots: list[dict[str, Any]] = []
+        self.engine_events: list[dict[str, Any]] = []
         self.updated_at: datetime | None = None
         self.gdynia_fingerprint: str | None = None
         self.gdynia_timer_recalibrated_at: datetime | None = None
@@ -90,8 +152,19 @@ class TrafficCache:
             _previous_tomtom_present = traffic_history.seen_tomtom_present_ids()
             traffic_history.record_snapshot(events)
 
+            primary_events, context_events = split_engine_event_sources(events)
+            snapshots = build_corridor_snapshots(
+                primary_events,
+                context_events,
+                port_demand_baseline,
+            )
+            observation_store.append_batch(snapshots)
+            engine_events = anomaly_engine.evaluate(snapshots)
+
             async with self._lock:
                 self.events = events
+                self.corridor_snapshots = snapshots
+                self.engine_events = engine_events
                 self.updated_at = datetime.now(timezone.utc)
 
             self.gdynia_changed_on_last_refresh = gdynia_changed
@@ -100,17 +173,27 @@ class TrafficCache:
             if is_startup:
                 self.gdynia_timer_recalibrated_at = datetime.now(timezone.utc)
                 logger.info(
-                    "Initial cache refresh on startup (%s events, Gdynia timer calibrated)",
+                    "Initial cache refresh on startup (%s events, %s engine events, Gdynia timer calibrated)",
                     len(events),
+                    len(engine_events),
                 )
             elif gdynia_changed:
                 self.gdynia_timer_recalibrated_at = datetime.now(timezone.utc)
                 logger.info(
-                    "Gdynia API data changed; cache refreshed and 5min timer recalibrated (%s events)",
+                    "Gdynia API data changed; cache refreshed and 5min timer recalibrated (%s events, %s engine)",
                     len(events),
+                    len(engine_events),
                 )
             else:
-                logger.info("Traffic cache refreshed (%s events), Gdynia data unchanged", len(events))
+                logger.info(
+                    "Traffic cache refreshed (%s events, %s engine events), Gdynia data unchanged",
+                    len(events),
+                    len(engine_events),
+                )
+
+            if kafka_config.enabled and kafka_config.auto_publish_on_refresh:
+                await publish_events_to_kafka(events)
+                await publish_engine_events_to_kafka(engine_events)
 
             return gdynia_changed
 
@@ -118,9 +201,22 @@ class TrafficCache:
         async with self._lock:
             return list(self.events), self.updated_at
 
+    async def get_engine_state(
+        self,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], datetime | None]:
+        async with self._lock:
+            return (
+                list(self.corridor_snapshots),
+                list(self.engine_events),
+                self.updated_at,
+            )
+
 
 traffic_cache = TrafficCache()
 traffic_history = TrafficHistory()
+observation_store = ObservationStore()
+anomaly_engine = AnomalyEngine(observation_store)
+port_demand_baseline = load_baseline()
 _previous_tomtom_present: set[str] = set()
 
 
@@ -162,18 +258,26 @@ async def port_data_refresh_loop() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global kafka_producer, cache_refresh_task, gdynia_watch_task, port_data_refresh_task
-    producer = AIOKafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_serializer=lambda value: json.dumps(value, ensure_ascii=False).encode("utf-8"),
-        key_serializer=lambda key: key.encode("utf-8") if key else None,
-    )
-    try:
-        await producer.start()
-        kafka_producer = producer
-        logger.info("Kafka producer connected to %s", KAFKA_BOOTSTRAP_SERVERS)
-    except Exception as exc:
-        kafka_producer = None
-        logger.warning("Kafka producer unavailable: %s", exc)
+    if kafka_config.enabled:
+        producer = AIOKafkaProducer(**kafka_config.producer_kwargs())
+        try:
+            await producer.start()
+            kafka_producer = producer
+            logger.info(
+                "Kafka producer connected to %s (topic=%s, client_id=%s)",
+                kafka_config.bootstrap_servers,
+                kafka_config.topic,
+                kafka_config.client_id,
+            )
+        except Exception as exc:
+            kafka_producer = None
+            logger.warning(
+                "Kafka producer unavailable (%s): %s",
+                kafka_config.bootstrap_servers,
+                exc,
+            )
+    else:
+        logger.info("Kafka publishing disabled (KAFKA_ENABLED=false)")
 
     try:
         port_data_store.refresh()
@@ -807,7 +911,64 @@ def enrich_gdynia_metadata(events: list[dict[str, Any]]) -> dict[str, Any]:
     return metadata
 
 
+def split_engine_event_sources(
+    events: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    primary = [event for event in events if event.get("source_type") == "tomtom_traffic"]
+    context = [event for event in events if event.get("source_type") != "tomtom_traffic"]
+    return primary, context
+
+
+def engine_event_to_kafka(engine_event: dict[str, Any]) -> dict[str, Any]:
+    city_map = {
+        "Port Gdańsk": "Gdansk",
+        "Port Gdynia": "Gdynia",
+        "Port Szczecin": "Szczecin",
+        "Port Świnoujście": "Swinoujscie",
+    }
+    port_name = engine_event.get("port") or ""
+    severity = int(engine_event.get("severity") or 0)
+    status = "CRITICAL" if severity >= 75 else "CONGESTION" if severity >= 45 else "CLEAR"
+    return {
+        "event_id": f"port_anomaly_{engine_event.get('id')}",
+        "record_kind": "port_anomaly",
+        "entity_id": engine_event.get("corridor_id"),
+        "city": city_map.get(port_name, "Trojmiasto"),
+        "source_type": "port_anomaly_engine",
+        "timestamp": engine_event.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+        "location": {
+            "road_name": engine_event.get("roadSegment"),
+            "lat": None,
+            "lon": None,
+        },
+        "geometry": None,
+        "metrics": {
+            "severity": severity,
+            "confidence": engine_event.get("confidence"),
+            "event_type": engine_event.get("eventType"),
+        },
+        "status": status,
+        "context": {
+            "dispatch_impact": engine_event.get("dispatch_impact"),
+            "port_context": engine_event.get("port_context"),
+            "summary_pl": engine_event.get("summary"),
+            "engine": engine_event,
+        },
+    }
+
+
+async def publish_engine_events_to_kafka(engine_events: list[dict[str, Any]]) -> int:
+    if not engine_events:
+        return 0
+    kafka_events = [engine_event_to_kafka(item) for item in engine_events]
+    return await publish_events_to_kafka(kafka_events)
+
+
 async def publish_events_to_kafka(events: list[dict[str, Any]]) -> int:
+    global kafka_last_published_count
+    if not kafka_config.enabled:
+        logger.info("Skipping Kafka publish: KAFKA_ENABLED=false")
+        return 0
     if kafka_producer is None:
         logger.warning("Skipping Kafka publish: producer is not connected")
         return 0
@@ -816,7 +977,7 @@ async def publish_events_to_kafka(events: list[dict[str, Any]]) -> int:
     for event in events:
         try:
             await kafka_producer.send_and_wait(
-                KAFKA_TOPIC,
+                kafka_config.topic,
                 value=event,
                 key=event.get("event_id"),
             )
@@ -827,20 +988,30 @@ async def publish_events_to_kafka(events: list[dict[str, Any]]) -> int:
                 event.get("event_id"),
                 exc,
             )
-    logger.info("Published %s/%s events to topic %s", published, len(events), KAFKA_TOPIC)
+    kafka_last_published_count = published
+    logger.info(
+        "Published %s/%s events to topic %s",
+        published,
+        len(events),
+        kafka_config.topic,
+    )
     return published
 
 
 @app.get("/api/v1/port-traffic")
 async def get_port_traffic(
-    publish_kafka: bool = Query(default=True, description="Publish events to Kafka"),
+    publish_kafka: bool = Query(
+        default=None,
+        description="Publish events to Kafka (defaults to KAFKA_AUTO_PUBLISH or true for live fetch)",
+    ),
     use_cache: bool = Query(default=False, description="Return cached data instead of live fetch"),
 ) -> list[dict[str, Any]] | dict[str, Any]:
     if use_cache:
         return await get_map_data()
 
     events = await collect_port_traffic()
-    if publish_kafka:
+    should_publish = publish_kafka if publish_kafka is not None else True
+    if should_publish:
         await publish_events_to_kafka(events)
     return events
 
@@ -849,9 +1020,11 @@ async def get_port_traffic(
 async def get_map_data() -> dict[str, Any]:
     events = await get_cached_events()
     _, updated_at = await traffic_cache.get_snapshot()
+    snapshots, engine_events, engine_updated_at = await traffic_cache.get_engine_state()
     intel = intelligence_snapshot(events)
     port_events = build_port_map_events(port_data_store)
     road_events = [e for e in events if e.get("record_kind") not in ("port_call", "container_activity", "codeco_move")]
+    primary_events, context_events = split_engine_event_sources(events)
 
     return {
         "events": road_events,
@@ -861,7 +1034,14 @@ async def get_map_data() -> dict[str, Any]:
         "approach_zones": build_approach_zones(port_data_store, traffic_events=road_events),
         "city_port_dashboard": build_city_port_dashboard(port_data_store, traffic_events=road_events),
         "codeco_hourly_24h": build_codeco_hourly_24h(port_data_store),
+        "engine_events": engine_events,
+        "corridor_snapshots": snapshots,
+        "engine_bottlenecks": anomaly_engine.bottlenecks_last_hour(),
+        "port_demand_analysis": analyze_cities(port_demand_baseline, primary_events, context_events),
+        "engine_corridor_config": load_corridor_config(),
         "cached_at": updated_at.isoformat() if updated_at else None,
+        "engine_evaluated_at": engine_updated_at.isoformat() if engine_updated_at else None,
+        "observation_count": observation_store.corridor_count(),
         "age_seconds": traffic_cache.age_seconds(),
         "refresh_interval_seconds": CACHE_REFRESH_INTERVAL_SECONDS,
         "bottlenecks": intel["bottlenecks"],
@@ -875,6 +1055,10 @@ async def get_map_data() -> dict[str, Any]:
             "tomtom": build_tomtom_source_metadata(events),
             "port_pcs": build_port_pcs_metadata(),
         },
+        "kafka": kafka_config.status(
+            connected=kafka_producer is not None,
+            last_published=kafka_last_published_count,
+        ),
     }
 
 
@@ -931,6 +1115,85 @@ async def get_operational_report() -> dict[str, Any]:
     return intel["report"]
 
 
+@app.get("/api/v1/engine/events")
+async def get_engine_events() -> dict[str, Any]:
+    snapshots, events, updated_at = await traffic_cache.get_engine_state()
+    if not snapshots:
+        await traffic_cache.refresh(is_startup=True)
+        snapshots, events, updated_at = await traffic_cache.get_engine_state()
+    return {
+        "evaluated_at": updated_at.isoformat() if updated_at else None,
+        "observation_count": observation_store.corridor_count(),
+        "events": events,
+        "active_count": len(events),
+    }
+
+
+@app.get("/api/v1/engine/bottlenecks")
+async def get_engine_bottlenecks(
+    window: int = Query(default=60, ge=15, le=120, description="Ranking window in minutes"),
+) -> dict[str, Any]:
+    _, _, updated_at = await traffic_cache.get_engine_state()
+    if updated_at is None:
+        await traffic_cache.refresh(is_startup=True)
+        _, _, updated_at = await traffic_cache.get_engine_state()
+    return {
+        "window_minutes": window,
+        "evaluated_at": updated_at.isoformat() if updated_at else None,
+        "bottlenecks": anomaly_engine.bottlenecks_last_hour(),
+    }
+
+
+@app.get("/api/v1/engine/corridors")
+async def get_engine_corridors() -> dict[str, Any]:
+    snapshots, events, updated_at = await traffic_cache.get_engine_state()
+    if not snapshots:
+        await traffic_cache.refresh(is_startup=True)
+        snapshots, events, updated_at = await traffic_cache.get_engine_state()
+    return {
+        "evaluated_at": updated_at.isoformat() if updated_at else None,
+        "corridors": snapshots,
+        "related_events": events,
+    }
+
+
+@app.get("/api/v1/engine/corridor-config")
+async def get_engine_corridor_config() -> dict[str, Any]:
+    return load_corridor_config()
+
+
+@app.get("/api/v1/routing/forecast")
+async def get_routing_forecast() -> dict[str, Any]:
+    return await build_route_forecast()
+
+
+@app.get("/api/v1/routing/status")
+async def get_routing_status() -> dict[str, Any]:
+    return {
+        "routing_enabled": routing_enabled(),
+        "tomtom_api_configured": bool(get_tomtom_api_key()),
+    }
+
+
+@app.get("/api/v1/routing/bypasses")
+async def get_routing_bypasses(
+    incident_id: str = "",
+    lat: float | None = None,
+    lon: float | None = None,
+) -> dict[str, Any]:
+    if lat is None or lon is None:
+        return {
+            "enabled": routing_enabled(),
+            "recommended": False,
+            "error": "lat and lon query parameters are required",
+            "incident_id": incident_id or None,
+        }
+    result = await compute_bypass(lat=lat, lon=lon)
+    if incident_id:
+        result["incident_id"] = incident_id
+    return result
+
+
 @app.get("/")
 async def map_page() -> FileResponse:
     return FileResponse("map.html")
@@ -942,5 +1205,19 @@ async def map_page_alias() -> FileResponse:
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "kafka": kafka_config.status(
+            connected=kafka_producer is not None,
+            last_published=kafka_last_published_count,
+        ),
+    }
+
+
+@app.get("/api/v1/kafka/status")
+async def kafka_status() -> dict[str, Any]:
+    return kafka_config.status(
+        connected=kafka_producer is not None,
+        last_published=kafka_last_published_count,
+    )
