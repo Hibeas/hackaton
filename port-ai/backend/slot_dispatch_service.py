@@ -3,6 +3,7 @@ Slot dispatch orchestration — forecast risk → gate slots → speditions → 
 
 When hybrid forecast predicts strong delay on a corridor, find today's gate slots
 at affected terminals and notify responsible speditions (Twilio voice).
+Only slots marked at_risk receive calls; max one active/answered call per booking_ref.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from tms.canonical import CanonicalSlot, CanonicalSpedition
+from tms.database import tms_database
 from tms.store import TmsStore, tms_store
 
 logger = logging.getLogger(__name__)
@@ -75,12 +77,17 @@ class SlotDispatchService:
             spedition_by_slot = self._index_speditions(speditions)
 
             for slot in matching_slots:
+                provider_id = str(slot.get("provider_id") or "mock_msc")
+                tms_database.mark_slot_at_risk(provider_id, slot["slot_id"], at_risk_since=now)
+                slot = {**slot, "status": "at_risk"}
+
                 assigned = spedition_by_slot.get(slot["slot_id"], [])
+                primary = assigned[:1]
                 message = self._build_alert_message(
                     slot=slot,
                     forecast=forecast,
                     terminal_labels=terminal_labels,
-                    speditions=assigned,
+                    speditions=primary,
                 )
                 alerts.append(
                     {
@@ -92,12 +99,13 @@ class SlotDispatchService:
                         "horizon_minutes": int(forecast.get("horizon_minutes") or 0),
                         "forecast_method": forecast.get("method"),
                         "slot": slot,
-                        "speditions": assigned,
+                        "speditions": primary,
                         "voice_message": message,
                         "slot_local_time": self._format_slot_local(slot),
                     }
                 )
 
+        alerts = self._dedupe_alerts_by_slot(alerts)
         alerts.sort(key=lambda item: item["predicted_delay_sec"], reverse=True)
         return {
             "generated_at": now.isoformat(),
@@ -133,61 +141,145 @@ class SlotDispatchService:
 
         now = reference or datetime.now(timezone.utc)
         calls: list[dict[str, Any]] = []
+        phones_called_this_run: set[str] = set()
 
         for alert in plan.get("alerts") or []:
-            for spedition in alert.get("speditions") or []:
-                phone = str(spedition.get("phone_e164") or "").strip()
-                if not phone:
-                    continue
-                fingerprint = self._call_fingerprint(alert["alert_id"], spedition["spedition_id"])
-                if not force and self._in_cooldown(fingerprint, now):
-                    calls.append(
-                        {
-                            "status": "skipped_cooldown",
-                            "fingerprint": fingerprint,
-                            "spedition_id": spedition["spedition_id"],
-                            "phone": phone,
-                        }
-                    )
-                    continue
+            slot = alert.get("slot") or {}
+            if slot.get("status") != "at_risk":
+                calls.append(
+                    {
+                        "status": "skipped_not_at_risk",
+                        "slot_id": slot.get("slot_id"),
+                    }
+                )
+                continue
 
-                message = str(alert.get("voice_message") or "")
-                try:
-                    result = await voice_call_fn(phone, message)
-                    self._call_cooldowns[fingerprint] = now
-                    entry = {
-                        "status": "called",
+            booking_ref = str(slot.get("booking_ref") or "")
+            provider_id = str(slot.get("provider_id") or "mock_msc")
+
+            if booking_ref and tms_database.booking_has_answered_call(booking_ref):
+                calls.append(
+                    {
+                        "status": "skipped_booking_answered",
+                        "booking_ref": booking_ref,
+                        "slot_id": slot.get("slot_id"),
+                    }
+                )
+                continue
+
+            if booking_ref and tms_database.booking_has_active_call(booking_ref):
+                calls.append(
+                    {
+                        "status": "skipped_booking_active",
+                        "booking_ref": booking_ref,
+                        "slot_id": slot.get("slot_id"),
+                    }
+                )
+                continue
+
+            speditions = alert.get("speditions") or []
+            if not speditions:
+                calls.append(
+                    {
+                        "status": "skipped_no_spedition",
+                        "slot_id": slot.get("slot_id"),
+                    }
+                )
+                continue
+
+            spedition = speditions[0]
+            phone = str(spedition.get("phone_e164") or "").strip()
+            if not phone:
+                continue
+
+            if phone in phones_called_this_run:
+                calls.append(
+                    {
+                        "status": "skipped_phone_duplicate",
+                        "phone": phone,
+                        "slot_id": slot.get("slot_id"),
+                    }
+                )
+                continue
+
+            fingerprint = self._call_fingerprint(alert["alert_id"], spedition["spedition_id"])
+            if not force and self._in_cooldown(fingerprint, now):
+                calls.append(
+                    {
+                        "status": "skipped_cooldown",
                         "fingerprint": fingerprint,
                         "spedition_id": spedition["spedition_id"],
-                        "company_name": spedition.get("company_name"),
                         "phone": phone,
-                        "slot_id": alert["slot"]["slot_id"],
-                        "call_sid": result.get("call_sid"),
-                        "strategy": result.get("strategy"),
                     }
-                    calls.append(entry)
-                    self._history.append({**entry, "at": now.isoformat(), "message": message})
-                    logger.info(
-                        "Slot dispatch call %s -> %s (%s)",
-                        spedition["spedition_id"],
-                        phone,
-                        alert["slot"]["slot_id"],
+                )
+                continue
+
+            message = str(alert.get("voice_message") or "")
+            try:
+                result = await voice_call_fn(phone, message)
+                self._call_cooldowns[fingerprint] = now
+                phones_called_this_run.add(phone)
+
+                if booking_ref:
+                    tms_database.record_slot_call(
+                        provider_id=provider_id,
+                        booking_ref=booking_ref,
+                        slot_id=str(slot.get("slot_id") or ""),
+                        spedition_id=str(spedition.get("spedition_id") or ""),
+                        phone_e164=phone,
+                        call_sid=result.get("call_sid"),
+                        call_status="initiated",
                     )
-                except Exception as exc:
-                    logger.warning(
-                        "Slot dispatch call failed for %s: %s",
-                        spedition.get("spedition_id"),
-                        exc,
-                    )
-                    calls.append(
-                        {
-                            "status": "error",
-                            "fingerprint": fingerprint,
-                            "spedition_id": spedition["spedition_id"],
-                            "phone": phone,
-                            "error": str(exc),
-                        }
-                    )
+
+                entry = {
+                    "status": "called",
+                    "fingerprint": fingerprint,
+                    "spedition_id": spedition["spedition_id"],
+                    "company_name": spedition.get("company_name"),
+                    "phone": phone,
+                    "slot_id": slot.get("slot_id"),
+                    "booking_ref": booking_ref,
+                    "call_sid": result.get("call_sid"),
+                    "strategy": result.get("strategy"),
+                }
+                calls.append(entry)
+                self._history.append({**entry, "at": now.isoformat(), "message": message})
+                logger.info(
+                    "Slot dispatch call %s -> %s (%s, booking=%s)",
+                    spedition["spedition_id"],
+                    phone,
+                    slot.get("slot_id"),
+                    booking_ref,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Slot dispatch call failed for %s: %s",
+                    spedition.get("spedition_id"),
+                    exc,
+                )
+                if booking_ref:
+                    try:
+                        tms_database.record_slot_call(
+                            provider_id=provider_id,
+                            booking_ref=booking_ref,
+                            slot_id=str(slot.get("slot_id") or ""),
+                            spedition_id=str(spedition.get("spedition_id") or ""),
+                            phone_e164=phone,
+                            call_sid=None,
+                            call_status="failed",
+                        )
+                    except Exception as record_exc:
+                        logger.warning("Failed to record failed call for %s: %s", booking_ref, record_exc)
+
+                calls.append(
+                    {
+                        "status": "error",
+                        "fingerprint": fingerprint,
+                        "spedition_id": spedition["spedition_id"],
+                        "phone": phone,
+                        "error": str(exc),
+                    }
+                )
 
         plan["auto_enabled"] = True
         plan["calls"] = calls
@@ -195,6 +287,19 @@ class SlotDispatchService:
 
     def recent_history(self, limit: int = 20) -> list[dict[str, Any]]:
         return list(reversed(self._history[-limit:]))
+
+    def _dedupe_alerts_by_slot(self, alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        best_by_slot: dict[str, dict[str, Any]] = {}
+        for alert in alerts:
+            slot_id = str(alert.get("slot", {}).get("slot_id") or "")
+            if not slot_id:
+                continue
+            existing = best_by_slot.get(slot_id)
+            if existing is None or int(alert.get("predicted_delay_sec") or 0) > int(
+                existing.get("predicted_delay_sec") or 0
+            ):
+                best_by_slot[slot_id] = alert
+        return list(best_by_slot.values())
 
     def _high_risk_forecasts(self, forecasts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         results = [
@@ -222,7 +327,6 @@ class SlotDispatchService:
         end = datetime.fromisoformat(slot["window_end"].replace("Z", "+00:00"))
         horizon = int(forecast.get("horizon_minutes") or SLOT_DISPATCH_MIN_HORIZON_MIN)
         risk_until = now + timedelta(minutes=max(horizon, SLOT_DISPATCH_LOOKAHEAD_MIN))
-        # Slot overlaps forecast horizon window, or starts within lookahead from now.
         return start <= risk_until and end >= now
 
     def _index_speditions(
@@ -262,8 +366,7 @@ class SlotDispatchService:
         return f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
 
     def _alert_fingerprint(self, corridor_id: str, slot_id: str, forecast: dict[str, Any]) -> str:
-        delay_bucket = int(int(forecast.get("predicted_delay_sec") or 0) / 300)
-        raw = f"{corridor_id}|{slot_id}|{forecast.get('horizon_minutes')}|{delay_bucket}"
+        raw = f"{corridor_id}|{slot_id}"
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
     def _call_fingerprint(self, alert_id: str, spedition_id: str) -> str:

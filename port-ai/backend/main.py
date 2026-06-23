@@ -14,7 +14,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 import httpx
 import xmltodict
 from aiokafka import AIOKafkaProducer
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -58,7 +58,14 @@ from slot_dispatch_service import (
 )
 from tms.database import tms_database
 from tms.store import tms_store
-from voice_call_service import is_voice_call_configured, make_automated_voice_call, voice_call_mode
+from voice_call_service import (
+    apply_twilio_call_status_update,
+    is_voice_call_configured,
+    make_automated_voice_call,
+    twilio_status_callback_url,
+    validate_twilio_webhook,
+    voice_call_mode,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1440,6 +1447,44 @@ async def trigger_voice_demo_call(body: VoiceDemoCallRequest | None = None) -> d
         raise HTTPException(status_code=500, detail="voice_call_failed") from exc
 
 
+@app.post("/api/v1/voice/twilio/status")
+async def twilio_call_status_webhook(request: Request) -> Response:
+    """
+    Twilio status callback — updates tms_slot_calls when call is answered/failed.
+    Requires PUBLIC_API_BASE_URL (ngrok/deploy) reachable by Twilio.
+    """
+    form = await request.form()
+    params = {key: str(value) for key, value in form.items()}
+    call_sid = params.get("CallSid", "").strip()
+    call_status = params.get("CallStatus", "").strip()
+    signature = request.headers.get("X-Twilio-Signature", "")
+
+    if not call_sid or not call_status:
+        raise HTTPException(status_code=400, detail="twilio_missing_fields")
+
+    request_url = str(request.url)
+    if not validate_twilio_webhook(request_url, params, signature):
+        logger.warning("Twilio webhook signature rejected for sid=%s", call_sid)
+        raise HTTPException(status_code=403, detail="twilio_invalid_signature")
+
+    duration_raw = params.get("CallDuration", "").strip()
+    duration_sec = int(duration_raw) if duration_raw.isdigit() else None
+    result = apply_twilio_call_status_update(
+        call_sid=call_sid,
+        twilio_status=call_status,
+        duration_sec=duration_sec,
+    )
+    if result:
+        logger.info(
+            "Twilio status sid=%s twilio=%s -> %s booking=%s",
+            call_sid,
+            call_status,
+            result.get("call_status"),
+            result.get("booking_ref"),
+        )
+    return Response(status_code=204)
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
     model = load_model()
@@ -1463,6 +1508,7 @@ async def health() -> dict[str, Any]:
         "voice": {
             "configured": is_voice_call_configured(),
             "mode": voice_call_mode(),
+            "twilio_status_callback": twilio_status_callback_url(),
         },
         "auth": {
             "configured": auth_configured(),

@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS tms_slot_templates (
     booking_ref TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'confirmed',
     corridor_ids TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    at_risk_since TEXT,
+    window_start_at TEXT,
+    window_end_at TEXT,
     PRIMARY KEY (provider_id, slot_id),
     FOREIGN KEY (provider_id) REFERENCES tms_carriers(provider_id)
 )
@@ -73,8 +78,63 @@ CREATE TABLE IF NOT EXISTS tms_slot_templates (
     booking_ref TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'confirmed',
     corridor_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    at_risk_since TIMESTAMPTZ,
+    window_start_at TIMESTAMPTZ,
+    window_end_at TIMESTAMPTZ,
     PRIMARY KEY (provider_id, slot_id)
 )
+"""
+
+CREATE_SLOT_CALLS_SQLITE = """
+CREATE TABLE IF NOT EXISTS tms_slot_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id TEXT NOT NULL,
+    booking_ref TEXT NOT NULL,
+    slot_id TEXT NOT NULL,
+    spedition_id TEXT,
+    phone_e164 TEXT NOT NULL,
+    call_sid TEXT,
+    call_status TEXT NOT NULL DEFAULT 'initiated',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    answered_at TEXT
+)
+"""
+
+CREATE_SLOT_CALLS_POSTGRES = """
+CREATE TABLE IF NOT EXISTS tms_slot_calls (
+    id BIGSERIAL PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    booking_ref TEXT NOT NULL,
+    slot_id TEXT NOT NULL,
+    spedition_id TEXT,
+    phone_e164 TEXT NOT NULL,
+    call_sid TEXT,
+    call_status TEXT NOT NULL DEFAULT 'initiated',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    answered_at TIMESTAMPTZ,
+    CONSTRAINT tms_slot_calls_status_check
+        CHECK (call_status IN ('initiated', 'answered', 'failed', 'skipped'))
+)
+"""
+
+INDEX_SLOT_CALLS_ANSWERED = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tms_slot_calls_one_answered_per_booking
+ON tms_slot_calls (booking_ref)
+WHERE call_status = 'answered'
+"""
+
+INDEX_SLOT_CALLS_ACTIVE = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tms_slot_calls_one_active_per_booking
+ON tms_slot_calls (booking_ref)
+WHERE call_status IN ('initiated', 'answered')
+"""
+
+INDEX_SLOT_AT_RISK = """
+CREATE INDEX IF NOT EXISTS idx_tms_slot_templates_at_risk
+ON tms_slot_templates (provider_id, status)
+WHERE status = 'at_risk'
 """
 
 CREATE_SPEDITIONS_SQLITE = """
@@ -164,9 +224,14 @@ class TmsDatabase:
             connection.execute(CREATE_SLOT_TEMPLATES_SQLITE)
             connection.execute(CREATE_SPEDITIONS_SQLITE)
             connection.execute(CREATE_SPEDITION_SLOTS_SQLITE)
+            connection.execute(CREATE_SLOT_CALLS_SQLITE)
             connection.execute(INDEX_SLOT_TERMINAL)
             connection.execute(INDEX_SPEDITION_PHONE)
+            connection.execute(INDEX_SLOT_CALLS_ANSWERED)
+            connection.execute(INDEX_SLOT_CALLS_ACTIVE)
+            connection.execute(INDEX_SLOT_AT_RISK)
             connection.commit()
+        self._migrate_sqlite_columns()
         logger.info("TmsDatabase: SQLite (%s)", self.db_path)
 
     def _init_postgres(self, database_url: str) -> None:
@@ -188,14 +253,60 @@ class TmsDatabase:
             cursor.execute(CREATE_SLOT_TEMPLATES_POSTGRES)
             cursor.execute(CREATE_SPEDITIONS_POSTGRES)
             cursor.execute(CREATE_SPEDITION_SLOTS_POSTGRES)
+            cursor.execute(CREATE_SLOT_CALLS_POSTGRES)
             cursor.execute(INDEX_SLOT_TERMINAL)
             cursor.execute(INDEX_SPEDITION_PHONE)
+            cursor.execute(INDEX_SLOT_CALLS_ANSWERED)
+            cursor.execute(INDEX_SLOT_CALLS_ACTIVE)
+            cursor.execute(INDEX_SLOT_AT_RISK)
+        self._migrate_postgres_columns()
         logger.info("TmsDatabase: Supabase/Postgres connected")
 
     def _sqlite_connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         return connection
+
+    def _migrate_postgres_columns(self) -> None:
+        statements = [
+            "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+            "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+            "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS at_risk_since TIMESTAMPTZ",
+            "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS window_start_at TIMESTAMPTZ",
+            "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS window_end_at TIMESTAMPTZ",
+        ]
+        with self._pg_conn.cursor() as cursor:
+            for statement in statements:
+                cursor.execute(statement)
+
+    def _migrate_sqlite_columns(self) -> None:
+        columns = {
+            "created_at": "TEXT",
+            "updated_at": "TEXT",
+            "at_risk_since": "TEXT",
+            "window_start_at": "TEXT",
+            "window_end_at": "TEXT",
+        }
+        with self._sqlite_connect() as connection:
+            existing = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(tms_slot_templates)").fetchall()
+            }
+            for name, definition in columns.items():
+                if name not in existing:
+                    connection.execute(f"ALTER TABLE tms_slot_templates ADD COLUMN {name} {definition}")
+            connection.commit()
+
+    def _parse_optional_timestamp(self, value: Any) -> datetime | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        text = str(value).strip()
+        if not text:
+            return None
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
     def _seed_mock_msc_if_empty(self) -> None:
         if self.get_carrier("mock_msc") is not None:
@@ -264,6 +375,9 @@ class TmsDatabase:
 
     def upsert_slot_template(self, provider_id: str, template: dict[str, Any]) -> None:
         corridor_ids = [str(item) for item in (template.get("corridor_ids") or [])]
+        window_start_at = template.get("window_start_at")
+        window_end_at = template.get("window_end_at")
+        at_risk_since = template.get("at_risk_since")
         if self.backend == "postgres":
             with self._pg_conn.cursor() as cursor:
                 cursor.execute(
@@ -271,8 +385,9 @@ class TmsDatabase:
                     INSERT INTO tms_slot_templates (
                         provider_id, slot_id, terminal_code, port_id,
                         start_hour, start_minute, duration_minutes,
-                        container_count, booking_ref, status, corridor_ids
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        container_count, booking_ref, status, corridor_ids,
+                        window_start_at, window_end_at, at_risk_since, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, NOW())
                     ON CONFLICT (provider_id, slot_id) DO UPDATE SET
                         terminal_code = EXCLUDED.terminal_code,
                         port_id = EXCLUDED.port_id,
@@ -282,7 +397,11 @@ class TmsDatabase:
                         container_count = EXCLUDED.container_count,
                         booking_ref = EXCLUDED.booking_ref,
                         status = EXCLUDED.status,
-                        corridor_ids = EXCLUDED.corridor_ids
+                        corridor_ids = EXCLUDED.corridor_ids,
+                        window_start_at = COALESCE(EXCLUDED.window_start_at, tms_slot_templates.window_start_at),
+                        window_end_at = COALESCE(EXCLUDED.window_end_at, tms_slot_templates.window_end_at),
+                        at_risk_since = COALESCE(EXCLUDED.at_risk_since, tms_slot_templates.at_risk_since),
+                        updated_at = NOW()
                     """,
                     (
                         provider_id,
@@ -296,6 +415,9 @@ class TmsDatabase:
                         str(template.get("booking_ref") or ""),
                         str(template.get("status") or "confirmed"),
                         json.dumps(corridor_ids),
+                        window_start_at,
+                        window_end_at,
+                        at_risk_since,
                     ),
                 )
             return
@@ -306,8 +428,9 @@ class TmsDatabase:
                 INSERT INTO tms_slot_templates (
                     provider_id, slot_id, terminal_code, port_id,
                     start_hour, start_minute, duration_minutes,
-                    container_count, booking_ref, status, corridor_ids
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    container_count, booking_ref, status, corridor_ids,
+                    window_start_at, window_end_at, at_risk_since, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(provider_id, slot_id) DO UPDATE SET
                     terminal_code = excluded.terminal_code,
                     port_id = excluded.port_id,
@@ -317,7 +440,11 @@ class TmsDatabase:
                     container_count = excluded.container_count,
                     booking_ref = excluded.booking_ref,
                     status = excluded.status,
-                    corridor_ids = excluded.corridor_ids
+                    corridor_ids = excluded.corridor_ids,
+                    window_start_at = COALESCE(excluded.window_start_at, window_start_at),
+                    window_end_at = COALESCE(excluded.window_end_at, window_end_at),
+                    at_risk_since = COALESCE(excluded.at_risk_since, at_risk_since),
+                    updated_at = datetime('now')
                 """,
                 (
                     provider_id,
@@ -331,9 +458,274 @@ class TmsDatabase:
                     str(template.get("booking_ref") or ""),
                     str(template.get("status") or "confirmed"),
                     json.dumps(corridor_ids),
+                    window_start_at,
+                    window_end_at,
+                    at_risk_since,
                 ),
             )
             connection.commit()
+
+    def mark_slot_at_risk(
+        self,
+        provider_id: str,
+        slot_id: str,
+        *,
+        at_risk_since: datetime | None = None,
+    ) -> None:
+        since = at_risk_since or datetime.now(timezone.utc)
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE tms_slot_templates
+                    SET status = 'at_risk', at_risk_since = %s, updated_at = NOW()
+                    WHERE provider_id = %s AND slot_id = %s
+                    """,
+                    (since, provider_id, slot_id),
+                )
+            return
+
+        with self._sqlite_connect() as connection:
+            connection.execute(
+                """
+                UPDATE tms_slot_templates
+                SET status = 'at_risk', at_risk_since = ?, updated_at = datetime('now')
+                WHERE provider_id = ? AND slot_id = ?
+                """,
+                (since.isoformat(), provider_id, slot_id),
+            )
+            connection.commit()
+
+    def booking_has_answered_call(self, booking_ref: str) -> bool:
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1 FROM tms_slot_calls
+                    WHERE booking_ref = %s AND call_status = 'answered'
+                    LIMIT 1
+                    """,
+                    (booking_ref,),
+                )
+                return cursor.fetchone() is not None
+
+        with self._sqlite_connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM tms_slot_calls
+                WHERE booking_ref = ? AND call_status = 'answered'
+                LIMIT 1
+                """,
+                (booking_ref,),
+            ).fetchone()
+            return row is not None
+
+    def booking_has_active_call(self, booking_ref: str) -> bool:
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1 FROM tms_slot_calls
+                    WHERE booking_ref = %s AND call_status IN ('initiated', 'answered')
+                    LIMIT 1
+                    """,
+                    (booking_ref,),
+                )
+                return cursor.fetchone() is not None
+
+        with self._sqlite_connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM tms_slot_calls
+                WHERE booking_ref = ? AND call_status IN ('initiated', 'answered')
+                LIMIT 1
+                """,
+                (booking_ref,),
+            ).fetchone()
+            return row is not None
+
+    def record_slot_call(
+        self,
+        *,
+        provider_id: str,
+        booking_ref: str,
+        slot_id: str,
+        spedition_id: str | None,
+        phone_e164: str,
+        call_sid: str | None,
+        call_status: str = "initiated",
+        answered_at: datetime | None = None,
+    ) -> None:
+        if call_status not in {"initiated", "answered", "failed", "skipped"}:
+            raise ValueError(f"invalid call_status: {call_status}")
+
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO tms_slot_calls (
+                        provider_id, booking_ref, slot_id, spedition_id,
+                        phone_e164, call_sid, call_status, answered_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        provider_id,
+                        booking_ref,
+                        slot_id,
+                        spedition_id,
+                        phone_e164,
+                        call_sid,
+                        call_status,
+                        answered_at,
+                    ),
+                )
+            return
+
+        with self._sqlite_connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO tms_slot_calls (
+                    provider_id, booking_ref, slot_id, spedition_id,
+                    phone_e164, call_sid, call_status, answered_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    provider_id,
+                    booking_ref,
+                    slot_id,
+                    spedition_id,
+                    phone_e164,
+                    call_sid,
+                    call_status,
+                    answered_at.isoformat() if answered_at else None,
+                ),
+            )
+            connection.commit()
+
+    def update_slot_call_from_twilio(
+        self,
+        *,
+        call_sid: str,
+        call_status: str,
+        twilio_status: str,
+    ) -> dict[str, Any] | None:
+        if call_status not in {"answered", "failed"}:
+            return None
+
+        answered_at = datetime.now(timezone.utc) if call_status == "answered" else None
+
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, booking_ref, call_status FROM tms_slot_calls
+                    WHERE call_sid = %s
+                    LIMIT 1
+                    """,
+                    (call_sid,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                record_id, booking_ref, current_status = row[0], row[1], row[2]
+                if current_status == call_status:
+                    return {
+                        "id": record_id,
+                        "booking_ref": booking_ref,
+                        "call_status": current_status,
+                        "twilio_status": twilio_status,
+                        "updated": False,
+                    }
+                if call_status == "answered" and self.booking_has_answered_call(str(booking_ref)):
+                    cursor.execute(
+                        """
+                        UPDATE tms_slot_calls
+                        SET call_status = 'failed', answered_at = NULL
+                        WHERE id = %s
+                        """,
+                        (record_id,),
+                    )
+                    return {
+                        "id": record_id,
+                        "booking_ref": booking_ref,
+                        "call_status": "failed",
+                        "twilio_status": twilio_status,
+                        "updated": True,
+                        "note": "booking_already_answered",
+                    }
+                cursor.execute(
+                    """
+                    UPDATE tms_slot_calls
+                    SET call_status = %s,
+                        answered_at = COALESCE(%s, answered_at)
+                    WHERE id = %s
+                    """,
+                    (call_status, answered_at, record_id),
+                )
+                return {
+                    "id": record_id,
+                    "booking_ref": booking_ref,
+                    "call_status": call_status,
+                    "twilio_status": twilio_status,
+                    "updated": True,
+                }
+
+        with self._sqlite_connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, booking_ref, call_status FROM tms_slot_calls
+                WHERE call_sid = ?
+                LIMIT 1
+                """,
+                (call_sid,),
+            ).fetchone()
+            if row is None:
+                return None
+            record_id = row["id"]
+            booking_ref = str(row["booking_ref"])
+            current_status = str(row["call_status"])
+            if current_status == call_status:
+                return {
+                    "id": record_id,
+                    "booking_ref": booking_ref,
+                    "call_status": current_status,
+                    "twilio_status": twilio_status,
+                    "updated": False,
+                }
+            if call_status == "answered" and self.booking_has_answered_call(booking_ref):
+                connection.execute(
+                    "UPDATE tms_slot_calls SET call_status = 'failed', answered_at = NULL WHERE id = ?",
+                    (record_id,),
+                )
+                connection.commit()
+                return {
+                    "id": record_id,
+                    "booking_ref": booking_ref,
+                    "call_status": "failed",
+                    "twilio_status": twilio_status,
+                    "updated": True,
+                    "note": "booking_already_answered",
+                }
+            connection.execute(
+                """
+                UPDATE tms_slot_calls
+                SET call_status = ?, answered_at = COALESCE(?, answered_at)
+                WHERE id = ?
+                """,
+                (
+                    call_status,
+                    answered_at.isoformat() if answered_at else None,
+                    record_id,
+                ),
+            )
+            connection.commit()
+            return {
+                "id": record_id,
+                "booking_ref": booking_ref,
+                "call_status": call_status,
+                "twilio_status": twilio_status,
+                "updated": True,
+            }
 
     def upsert_spedition(
         self,
@@ -499,7 +891,8 @@ class TmsDatabase:
                     cursor.execute(
                         """
                         SELECT slot_id, terminal_code, port_id, start_hour, start_minute,
-                               duration_minutes, container_count, booking_ref, status, corridor_ids
+                               duration_minutes, container_count, booking_ref, status, corridor_ids,
+                               created_at, updated_at, at_risk_since, window_start_at, window_end_at
                         FROM tms_slot_templates
                         WHERE provider_id = %s AND terminal_code = ANY(%s)
                         ORDER BY start_hour, start_minute
@@ -510,7 +903,8 @@ class TmsDatabase:
                     cursor.execute(
                         """
                         SELECT slot_id, terminal_code, port_id, start_hour, start_minute,
-                               duration_minutes, container_count, booking_ref, status, corridor_ids
+                               duration_minutes, container_count, booking_ref, status, corridor_ids,
+                               created_at, updated_at, at_risk_since, window_start_at, window_end_at
                         FROM tms_slot_templates
                         WHERE provider_id = %s
                         ORDER BY start_hour, start_minute
@@ -521,7 +915,8 @@ class TmsDatabase:
 
         query = """
             SELECT slot_id, terminal_code, port_id, start_hour, start_minute,
-                   duration_minutes, container_count, booking_ref, status, corridor_ids
+                   duration_minutes, container_count, booking_ref, status, corridor_ids,
+                   created_at, updated_at, at_risk_since, window_start_at, window_end_at
             FROM tms_slot_templates
             WHERE provider_id = ?
         """
@@ -649,24 +1044,30 @@ class TmsDatabase:
             return [str(row["slot_id"]) for row in rows]
 
     def materialize_slot(self, provider_id: str, template: dict[str, Any], day: date) -> CanonicalSlot:
-        start_local = datetime(
-            day.year,
-            day.month,
-            day.day,
-            int(template["start_hour"]),
-            int(template["start_minute"]),
-            tzinfo=LOCAL_TZ,
-        )
         duration = int(template["duration_minutes"])
-        end_local = start_local + timedelta(minutes=duration)
+        window_start = self._parse_optional_timestamp(template.get("window_start_at"))
+        window_end = self._parse_optional_timestamp(template.get("window_end_at"))
+
+        if window_start is None or window_end is None:
+            start_local = datetime(
+                day.year,
+                day.month,
+                day.day,
+                int(template["start_hour"]),
+                int(template["start_minute"]),
+                tzinfo=LOCAL_TZ,
+            )
+            window_start = start_local.astimezone(timezone.utc)
+            window_end = (start_local + timedelta(minutes=duration)).astimezone(timezone.utc)
+
         slot_id = str(template["slot_id"])
         return CanonicalSlot(
             slot_id=slot_id,
             provider_id=provider_id,
             terminal_code=str(template["terminal_code"]),
             port_id=str(template["port_id"]),
-            window_start=start_local.astimezone(timezone.utc).isoformat(),
-            window_end=end_local.astimezone(timezone.utc).isoformat(),
+            window_start=window_start.isoformat(),
+            window_end=window_end.isoformat(),
             container_count=int(template["container_count"]),
             booking_ref=str(template["booking_ref"]),
             status=str(template["status"]),
@@ -691,6 +1092,11 @@ class TmsDatabase:
             "booking_ref": row[7],
             "status": row[8],
             "corridor_ids": [str(item) for item in corridor_ids],
+            "created_at": row[10].isoformat() if len(row) > 10 and row[10] else None,
+            "updated_at": row[11].isoformat() if len(row) > 11 and row[11] else None,
+            "at_risk_since": row[12].isoformat() if len(row) > 12 and row[12] else None,
+            "window_start_at": row[13].isoformat() if len(row) > 13 and row[13] else None,
+            "window_end_at": row[14].isoformat() if len(row) > 14 and row[14] else None,
         }
 
     def _template_row_sqlite(self, row: dict[str, Any]) -> dict[str, Any]:
