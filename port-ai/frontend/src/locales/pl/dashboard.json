@@ -1,0 +1,123 @@
+{
+  "status": {
+    "loading": "Ładowanie danych…",
+    "error": "Nie udało się pobrać danych. Ponawiam…",
+    "dataAge": "Wiek danych",
+    "nextRefresh": "Następna aktualizacja za",
+    "engineEvents": "Zdarzenia silnika",
+    "tomtomIncidents": "TomTom",
+    "ztmContext": "Kontekst ZTM",
+    "seconds": "{{count}} s"
+  },
+  "engine": {
+    "title": "Silnik anomalii portowych",
+    "subtitle": "Analiza korytarzy dojazdowych per port",
+    "evaluatedAt": "Ocena",
+    "observations": "Obserwacje w bazie",
+    "activeEvents": "Aktywne zdarzenia",
+    "ports": "Porty",
+    "corridors": "Korytarze dojazdowe",
+    "events": "Wykryte anomalie",
+    "selectedEvent": "Szczegóły zdarzenia",
+    "bottlenecks": "Wąskie gardła (60 min)",
+    "noEvents": "Brak aktywnych anomalii na tym porcie",
+    "noBottlenecks": "Za mało historii — ranking po zebraniu danych",
+    "clear": "OK",
+    "severity": "Ważność",
+    "dispatch": "Rekomendacja",
+    "confidence": "Pewność",
+    "portContext": "Kontekst portu",
+    "incidents": "Incydenty TomTom",
+    "incidentsShort": "inc.",
+    "delayShort": "opóźn.",
+    "logisticsWeight": "Waga logistyczna korytarza (1–10)",
+    "stress": "stres",
+    "dispatchImpact": {
+      "HOLD_DISPATCH": "Wstrzymaj dispatch",
+      "CAUTION": "Ostrożnie",
+      "MONITOR": "Monitoruj"
+    },
+    "portContextLabel": {
+      "expected_gate_peak": "Szczyt bramowy",
+      "low_port_demand": "Niski popyt portu",
+      "moderate_port_demand": "Umiarkowany popyt",
+      "unknown": "Brak baseline"
+    }
+  },
+  "corridorEditor": {
+    "back": "← Dashboard",
+    "navLink": "Edytor bbox",
+    "devTool": "DEV",
+    "title": "Edytor korytarzy",
+    "subtitle": "Klikaj mapę, aby dodać wierzchołki wielokąta. Tymczasowe narzędzie kalibracji bbox.",
+    "port": "Port",
+    "corridor": "Korytarz",
+    "helpClick": "Lewy klik — dodaj punkt wielokąta.",
+    "helpClose": "Podwójny klik lub „Zamknij wielokąt” — zatwierdź kształt (min. 3 punkty).",
+    "undoPoint": "Cofnij punkt",
+    "clear": "Wyczyść szkic",
+    "closePolygon": "Zamknij wielokąt",
+    "loadSaved": "Wczytaj zapisany",
+    "pointCount": "Punkty: {{count}}",
+    "closed": "zamknięty",
+    "open": "otwarty",
+    "noBboxYet": "Narysuj i zamknij wielokąt, aby zobaczyć bbox.",
+    "copyJson": "Kopiuj JSON",
+    "saveApi": "Zapisz do API",
+    "saving": "Zapisuję…",
+    "copied": "Skopiowano JSON do schowka.",
+    "saved": "Zapisano w corridors.json (backend).",
+    "loadedSaved": "Wczytano zapisaną geometrię korytarza.",
+    "needThreePoints": "Potrzeba co najmniej 3 punktów.",
+    "needClosedPolygon": "Zamknij wielokąt przed zapisem.",
+    "editTarget": "Edytujesz",
+    "targetPort": "Geofence portu (cały port)",
+    "targetCorridor": "Geofence korytarza",
+    "portScopeHint": "Rysujesz obrys całego portu (zielony). Pod-korytarze pozostają widoczne na mapie.",
+    "metadata": "Metadane geofence",
+    "metaName": "Nazwa",
+    "metaCity": "Miasto",
+    "metaPriority": "Priorytet biznesowy",
+    "metaWeight": "Waga logistyczna (1–10)",
+    "saveMetadata": "Zapisz metadane",
+    "deleteGeofence": "Usuń geofence",
+    "deleteConfirm": "Usunąć ten geofence?",
+    "addGeofence": "+ Dodaj nowy geofence",
+    "newGeofenceName": "Nowy geofence",
+    "metadataSaved": "Metadane zapisane.",
+    "deleted": "Geofence usunięty.",
+    "noPortGeofence": "Port nie ma jeszcze zapisanego geofence — narysuj od zera."
+  },
+  "geofence": {
+    "label": "Typ geofence",
+    "type": {
+      "APPROACH_CORRIDOR": "Korytarz dojazdowy",
+      "BOTTLENECK": "Wąskie gardło",
+      "BUFFER_ZONE": "Strefa buforowa",
+      "GATE_ZONE": "Strefa bram",
+      "PORT_ACCESS": "Dojazd portowy",
+      "CRITICAL_INFRASTRUCTURE": "Infrastruktura krytyczna"
+    },
+    "typeShort": {
+      "APPROACH_CORRIDOR": "DOJ",
+      "BOTTLENECK": "WG",
+      "BUFFER_ZONE": "BUF",
+      "GATE_ZONE": "BR",
+      "PORT_ACCESS": "ACC",
+      "CRITICAL_INFRASTRUCTURE": "INF"
+    }
+  },
+  "map": {
+    "incidentPopup": "<strong>{{road}}</strong><br/>Status: {{status}}<br/>Przyczyna: <b>{{reason}}</b> ({{category}})<br/>Opóźnienie: {{delay}} s",
+    "contextSegmentPopup": "<strong>{{road}}</strong> <em>(ZTM)</em><br/>Status: {{status}}<br/>Prędkość: {{speed}} km/h<br/>Natężenie: {{intensity}}",
+    "contextVehiclePopup": "<strong>{{road}}</strong> <em>(ZTM)</em><br/>Status: {{status}}<br/>Prędkość: {{speed}} km/h",
+    "intensityUnknown": "brak",
+    "zoomGdynia": "Gdynia",
+    "zoomRegion": "Cały region"
+  },
+  "language": {
+    "label": "Język",
+    "en": "English",
+    "pl": "Polski"
+  }
+}

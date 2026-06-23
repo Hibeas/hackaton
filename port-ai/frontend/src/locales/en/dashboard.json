@@ -1,0 +1,123 @@
+{
+  "status": {
+    "loading": "Loading data…",
+    "error": "Failed to load data. Retrying…",
+    "dataAge": "Data age",
+    "nextRefresh": "Next refresh in",
+    "engineEvents": "Engine events",
+    "tomtomIncidents": "TomTom",
+    "ztmContext": "ZTM context",
+    "seconds": "{{count}} s"
+  },
+  "engine": {
+    "title": "Port Anomaly Engine",
+    "subtitle": "Access corridor analysis per port",
+    "evaluatedAt": "Evaluated at",
+    "observations": "Observations stored",
+    "activeEvents": "Active events",
+    "ports": "Ports",
+    "corridors": "Access corridors",
+    "events": "Detected anomalies",
+    "selectedEvent": "Event details",
+    "bottlenecks": "Bottlenecks (60 min)",
+    "noEvents": "No active anomalies for this port",
+    "noBottlenecks": "Not enough history yet",
+    "clear": "OK",
+    "severity": "Severity",
+    "dispatch": "Recommendation",
+    "confidence": "Confidence",
+    "portContext": "Port context",
+    "incidents": "TomTom incidents",
+    "incidentsShort": "inc.",
+    "delayShort": "delay",
+    "logisticsWeight": "Corridor logistics weight (1–10)",
+    "stress": "stress",
+    "dispatchImpact": {
+      "HOLD_DISPATCH": "Hold dispatch",
+      "CAUTION": "Caution",
+      "MONITOR": "Monitor"
+    },
+    "portContextLabel": {
+      "expected_gate_peak": "Gate peak",
+      "low_port_demand": "Low port demand",
+      "moderate_port_demand": "Moderate demand",
+      "unknown": "No baseline"
+    }
+  },
+  "corridorEditor": {
+    "back": "← Dashboard",
+    "navLink": "BBox editor",
+    "devTool": "DEV",
+    "title": "Corridor editor",
+    "subtitle": "Click the map to add polygon vertices. Temporary bbox calibration tool.",
+    "port": "Port",
+    "corridor": "Corridor",
+    "helpClick": "Left click — add polygon vertex.",
+    "helpClose": "Double click or “Close polygon” — finalize shape (min. 3 points).",
+    "undoPoint": "Undo point",
+    "clear": "Clear draft",
+    "closePolygon": "Close polygon",
+    "loadSaved": "Load saved",
+    "pointCount": "Points: {{count}}",
+    "closed": "closed",
+    "open": "open",
+    "noBboxYet": "Draw and close a polygon to compute bbox.",
+    "copyJson": "Copy JSON",
+    "saveApi": "Save to API",
+    "saving": "Saving…",
+    "copied": "JSON copied to clipboard.",
+    "saved": "Saved to corridors.json (backend).",
+    "loadedSaved": "Loaded saved corridor geometry.",
+    "needThreePoints": "At least 3 points required.",
+    "needClosedPolygon": "Close the polygon before saving.",
+    "editTarget": "Editing",
+    "targetPort": "Port geofence (whole port)",
+    "targetCorridor": "Corridor geofence",
+    "portScopeHint": "Draw the port boundary (green). Sub-corridors remain visible on the map.",
+    "metadata": "Geofence metadata",
+    "metaName": "Name",
+    "metaCity": "City",
+    "metaPriority": "Business priority",
+    "metaWeight": "Logistics weight (1–10)",
+    "saveMetadata": "Save metadata",
+    "deleteGeofence": "Delete geofence",
+    "deleteConfirm": "Delete this geofence?",
+    "addGeofence": "+ Add new geofence",
+    "newGeofenceName": "New geofence",
+    "metadataSaved": "Metadata saved.",
+    "deleted": "Geofence deleted.",
+    "noPortGeofence": "Port has no saved geofence yet — draw from scratch."
+  },
+  "geofence": {
+    "label": "Geofence type",
+    "type": {
+      "APPROACH_CORRIDOR": "Approach corridor",
+      "BOTTLENECK": "Bottleneck",
+      "BUFFER_ZONE": "Buffer zone",
+      "GATE_ZONE": "Gate zone",
+      "PORT_ACCESS": "Port access",
+      "CRITICAL_INFRASTRUCTURE": "Critical infrastructure"
+    },
+    "typeShort": {
+      "APPROACH_CORRIDOR": "APP",
+      "BOTTLENECK": "BN",
+      "BUFFER_ZONE": "BUF",
+      "GATE_ZONE": "GATE",
+      "PORT_ACCESS": "ACC",
+      "CRITICAL_INFRASTRUCTURE": "INF"
+    }
+  },
+  "map": {
+    "incidentPopup": "<strong>{{road}}</strong><br/>Status: {{status}}<br/>Cause: <b>{{reason}}</b> ({{category}})<br/>Delay: {{delay}} s",
+    "contextSegmentPopup": "<strong>{{road}}</strong> <em>(ZTM)</em><br/>Status: {{status}}<br/>Speed: {{speed}} km/h<br/>Intensity: {{intensity}}",
+    "contextVehiclePopup": "<strong>{{road}}</strong> <em>(ZTM)</em><br/>Status: {{status}}<br/>Speed: {{speed}} km/h",
+    "intensityUnknown": "n/a",
+    "zoomGdynia": "Gdynia",
+    "zoomRegion": "Full region"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "pl": "Polski"
+  }
+}

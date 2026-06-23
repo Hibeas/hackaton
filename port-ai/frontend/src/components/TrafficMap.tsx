@@ -1,0 +1,302 @@
+import { useEffect, useMemo } from 'react'
+import {
+  CircleMarker,
+  GeoJSON,
+  MapContainer,
+  Polygon,
+  Popup,
+  Rectangle,
+  TileLayer,
+  useMap,
+} from 'react-leaflet'
+import type { Layer } from 'leaflet'
+import { useTranslation } from 'react-i18next'
+import type { CorridorBbox, LatLng } from '../constants/ports'
+import {
+  MAP_DEFAULT_CENTER,
+  MAP_DEFAULT_ZOOM,
+  TRAFFIC_STATUS_COLORS,
+} from '../constants/traffic'
+import type { MapDataLayer, TrafficEvent, TrafficStatus } from '../types/traffic'
+import {
+  buildContextSegmentGeoJson,
+  buildIncidentGeoJson,
+  splitContextEvents,
+  splitPrimaryEvents,
+} from '../utils/trafficFormat'
+
+interface TrafficMapProps {
+  primary: MapDataLayer
+  context: MapDataLayer
+  focusBbox?: CorridorBbox | null
+  focusPolygon?: LatLng[] | null
+}
+
+function FlyToBbox({ bbox }: { bbox?: CorridorBbox | null }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!bbox) {
+      return
+    }
+    map.fitBounds(
+      [
+        [bbox.min_lat, bbox.min_lon],
+        [bbox.max_lat, bbox.max_lon],
+      ],
+      { padding: [48, 48], maxZoom: 14 },
+    )
+  }, [bbox, map])
+
+  return null
+}
+
+function CorridorHighlight({
+  bbox,
+  polygon,
+}: {
+  bbox?: CorridorBbox | null
+  polygon?: LatLng[] | null
+}) {
+  if (polygon && polygon.length >= 3) {
+    return (
+      <Polygon
+        positions={polygon}
+        pathOptions={{
+          color: '#f59e0b',
+          weight: 2,
+          fillOpacity: 0.1,
+          dashArray: '6 4',
+        }}
+      />
+    )
+  }
+
+  if (!bbox) {
+    return null
+  }
+
+  return (
+    <Rectangle
+      bounds={[
+        [bbox.min_lat, bbox.min_lon],
+        [bbox.max_lat, bbox.max_lon],
+      ]}
+      pathOptions={{
+        color: '#f59e0b',
+        weight: 2,
+        fillOpacity: 0.1,
+        dashArray: '6 4',
+      }}
+    />
+  )
+}
+
+function MapViewControls() {
+  const map = useMap()
+  const { t } = useTranslation()
+
+  return (
+    <div className="map-controls">
+      <button type="button" onClick={() => map.setView([54.52, 18.53], 13)}>
+        {t('map.zoomGdynia')}
+      </button>
+      <button type="button" onClick={() => map.setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM)}>
+        {t('map.zoomRegion')}
+      </button>
+    </div>
+  )
+}
+
+function incidentStyle(feature?: GeoJSON.Feature) {
+  const status = (feature?.properties?.status as TrafficStatus) ?? 'CONGESTION'
+  return {
+    color: TRAFFIC_STATUS_COLORS[status],
+    weight: 7,
+    opacity: 0.95,
+    lineCap: 'round' as const,
+    lineJoin: 'round' as const,
+  }
+}
+
+function contextSegmentStyle(feature?: GeoJSON.Feature) {
+  const status = (feature?.properties?.status as TrafficStatus) ?? 'CLEAR'
+  return {
+    color: TRAFFIC_STATUS_COLORS[status],
+    weight: 5,
+    opacity: 0.35,
+    lineCap: 'round' as const,
+    lineJoin: 'round' as const,
+  }
+}
+
+function IncidentLayer({ incidents }: { incidents: TrafficEvent[] }) {
+  const { t } = useTranslation()
+  const { lineIncidents, pointIncidents } = useMemo(
+    () => splitPrimaryEvents(incidents),
+    [incidents],
+  )
+  const geoJson = useMemo(() => buildIncidentGeoJson(lineIncidents), [lineIncidents])
+
+  const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
+    const props = feature.properties as {
+      roadName: string
+      status: TrafficStatus
+      delaySec: number
+      reason: string
+      category: string
+    }
+    layer.bindPopup(
+      t('map.incidentPopup', {
+        road: props.roadName,
+        status: props.status,
+        reason: props.reason,
+        category: props.category,
+        delay: props.delaySec,
+      }),
+    )
+  }
+
+  return (
+    <>
+      {geoJson.features.length > 0 ? (
+        <GeoJSON
+          key={`lines-${geoJson.features.length}`}
+          data={geoJson}
+          style={incidentStyle}
+          onEachFeature={onEachFeature}
+        />
+      ) : null}
+      {pointIncidents.map((event) => (
+        <CircleMarker
+          key={event.event_id}
+          center={[event.location.lat, event.location.lon]}
+          radius={8}
+          pathOptions={{
+            color: TRAFFIC_STATUS_COLORS[event.status],
+            fillColor: TRAFFIC_STATUS_COLORS[event.status],
+            fillOpacity: 0.9,
+            weight: 2,
+          }}
+        >
+          <Popup>
+            <div
+              dangerouslySetInnerHTML={{
+                __html: t('map.incidentPopup', {
+                  road: event.location.road_name,
+                  status: event.status,
+                  reason: event.metrics.primary_reason ?? '',
+                  category: event.metrics.category_label ?? '',
+                  delay: event.metrics.delay_sec ?? 0,
+                }),
+              }}
+            />
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  )
+}
+
+function ContextSegmentLayer({ segments }: { segments: TrafficEvent[] }) {
+  const { t } = useTranslation()
+  const geoJson = useMemo(() => buildContextSegmentGeoJson(segments), [segments])
+
+  const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
+    const props = feature.properties as {
+      roadName: string
+      status: TrafficStatus
+      speedKmh: number
+      intensityVph: number | null
+    }
+    const intensity =
+      props.intensityVph === null || props.intensityVph === undefined
+        ? t('map.intensityUnknown')
+        : `${props.intensityVph} veh/h`
+
+    layer.bindPopup(
+      t('map.contextSegmentPopup', {
+        road: props.roadName,
+        status: props.status,
+        speed: Math.round(props.speedKmh),
+        intensity,
+      }),
+    )
+  }
+
+  if (geoJson.features.length === 0) {
+    return null
+  }
+
+  return (
+    <GeoJSON
+      key={`ctx-${geoJson.features.length}`}
+      data={geoJson}
+      style={contextSegmentStyle}
+      onEachFeature={onEachFeature}
+    />
+  )
+}
+
+function ContextVehicleMarkers({ vehicles }: { vehicles: TrafficEvent[] }) {
+  const { t } = useTranslation()
+
+  return (
+    <>
+      {vehicles.map((event) => (
+        <CircleMarker
+          key={event.event_id}
+          center={[event.location.lat, event.location.lon]}
+          radius={4}
+          pathOptions={{
+            color: TRAFFIC_STATUS_COLORS[event.status],
+            fillColor: TRAFFIC_STATUS_COLORS[event.status],
+            fillOpacity: 0.45,
+            weight: 1,
+          }}
+        >
+          <Popup>
+            <div
+              dangerouslySetInnerHTML={{
+                __html: t('map.contextVehiclePopup', {
+                  road: event.location.road_name,
+                  status: event.status,
+                  speed: Math.round(event.metrics.speed_kmh),
+                }),
+              }}
+            />
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  )
+}
+
+export function TrafficMap({ primary, context, focusBbox, focusPolygon }: TrafficMapProps) {
+  const { segments, vehicles } = useMemo(
+    () => splitContextEvents(context.events),
+    [context.events],
+  )
+
+  return (
+    <div className="map-shell">
+      <MapContainer
+        center={MAP_DEFAULT_CENTER}
+        zoom={MAP_DEFAULT_ZOOM}
+        className="traffic-map"
+        scrollWheelZoom
+      >
+        <TileLayer
+          attribution="&copy; OpenStreetMap contributors"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <ContextSegmentLayer segments={segments} />
+        <ContextVehicleMarkers vehicles={vehicles} />
+        <IncidentLayer incidents={primary.events} />
+        <CorridorHighlight bbox={focusBbox} polygon={focusPolygon} />
+        <FlyToBbox bbox={focusBbox} />
+        <MapViewControls />
+      </MapContainer>
+    </div>
+  )
+}

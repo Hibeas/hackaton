@@ -1,0 +1,138 @@
+import type {
+  AnomaliesResponse,
+  MapDataResponse,
+} from '../types/traffic'
+import type {
+  BottlenecksResponse,
+  CorridorsResponse,
+  EngineEventsResponse,
+} from '../types/engine'
+import type { CorridorConfigResponse } from '../types/corridorConfig'
+import type { CorridorBbox, LatLng } from '../constants/ports'
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} for ${url}`)
+  }
+  return response.json() as Promise<T>
+}
+
+export async function fetchMapData(): Promise<MapDataResponse> {
+  return fetchJson<MapDataResponse>('/api/v1/map-data')
+}
+
+export async function fetchAnomalies(): Promise<AnomaliesResponse> {
+  return fetchJson<AnomaliesResponse>('/api/v1/anomalies')
+}
+
+export async function fetchEngineEvents(): Promise<EngineEventsResponse> {
+  return fetchJson<EngineEventsResponse>('/api/v1/engine/events')
+}
+
+export async function fetchBottlenecks(): Promise<BottlenecksResponse> {
+  return fetchJson<BottlenecksResponse>('/api/v1/engine/bottlenecks')
+}
+
+export async function fetchCorridors(): Promise<CorridorsResponse> {
+  return fetchJson<CorridorsResponse>('/api/v1/engine/corridors')
+}
+
+export async function fetchCorridorConfig(): Promise<CorridorConfigResponse> {
+  return fetchJson<CorridorConfigResponse>('/api/v1/engine/corridor-config')
+}
+
+export async function patchPortGeometry(
+  portId: string,
+  payload: { bbox: CorridorBbox; polygon: LatLng[] },
+): Promise<{ ok: boolean; port_id: string }> {
+  const response = await fetch(`/api/v1/engine/ports/${portId}/geometry`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} saving port geometry`)
+  }
+  return response.json() as Promise<{ ok: boolean; port_id: string }>
+}
+
+export async function patchCorridorGeometry(
+  corridorId: string,
+  payload: { bbox: CorridorBbox; polygon: LatLng[] },
+): Promise<{ ok: boolean; corridor_id: string }> {
+  const response = await fetch(`/api/v1/engine/corridors/${corridorId}/geometry`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} saving corridor geometry`)
+  }
+  return response.json() as Promise<{ ok: boolean; corridor_id: string }>
+}
+
+export interface CorridorMetadataPayload {
+  name?: string
+  city?: string
+  geofence_type?: string
+  business_priority?: string
+  logistics_weight?: number
+  impacts_port_access?: boolean
+  terminals?: string[]
+}
+
+export async function patchCorridorMetadata(
+  corridorId: string,
+  payload: CorridorMetadataPayload,
+): Promise<{ ok: boolean; corridor_id: string }> {
+  const response = await fetch(`/api/v1/engine/corridors/${corridorId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} saving corridor metadata`)
+  }
+  return response.json() as Promise<{ ok: boolean; corridor_id: string }>
+}
+
+export interface CorridorCreatePayload {
+  id: string
+  name: string
+  city?: string
+  geofence_type: string
+  business_priority: string
+  logistics_weight: number
+  impacts_port_access: boolean
+  bbox: CorridorBbox
+  polygon?: LatLng[]
+  terminals?: string[]
+}
+
+export async function createCorridor(
+  portId: string,
+  payload: CorridorCreatePayload,
+): Promise<{ ok: boolean; port_id: string; corridor_id: string }> {
+  const response = await fetch(`/api/v1/engine/ports/${portId}/corridors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} creating corridor`)
+  }
+  return response.json() as Promise<{ ok: boolean; port_id: string; corridor_id: string }>
+}
+
+export async function deleteCorridor(
+  corridorId: string,
+): Promise<{ ok: boolean; corridor_id: string }> {
+  const response = await fetch(`/api/v1/engine/corridors/${corridorId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} deleting corridor`)
+  }
+  return response.json() as Promise<{ ok: boolean; corridor_id: string }>
+}

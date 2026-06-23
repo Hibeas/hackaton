@@ -1,0 +1,683 @@
+{
+  "schema_version": 3,
+  "description": "Geofence Priority List (MVP) — lokalizacje wybrane wg wpływu na logistykę portową, nie geografii miasta. Bbox orientacyjne — kalibracja w edytorze mapy.",
+  "geofence_types": [
+    "APPROACH_CORRIDOR",
+    "BOTTLENECK",
+    "BUFFER_ZONE",
+    "GATE_ZONE",
+    "PORT_ACCESS",
+    "CRITICAL_INFRASTRUCTURE"
+  ],
+  "business_priorities": [
+    "CRITICAL",
+    "HIGH"
+  ],
+  "weight_scale": {
+    "note": "logistics_weight 1–10 + mnożnik typu geofence → severity; CRITICAL≈10, HIGH≈7–8"
+  },
+  "ports": [
+    {
+      "id": "gdansk",
+      "name": "Port Gdańsk",
+      "terminals": [
+        "DCT"
+      ],
+      "corridors": [
+        {
+          "id": "trasa_sucharskiego",
+          "name": "Trasa Sucharskiego",
+          "city": "Gdańsk",
+          "geofence_type": "APPROACH_CORRIDOR",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.321029,
+            "max_lat": 54.407042,
+            "min_lon": 18.674526,
+            "max_lon": 18.708687
+          },
+          "terminals": [
+            "DCT"
+          ],
+          "polygon": [
+            [
+              54.403745106657865,
+              18.676242828369144
+            ],
+            [
+              54.39685012259228,
+              18.684997558593754
+            ],
+            [
+              54.381457137270054,
+              18.679161071777347
+            ],
+            [
+              54.374258435906924,
+              18.678646087646488
+            ],
+            [
+              54.35075388998427,
+              18.694438934326175
+            ],
+            [
+              54.32102890122528,
+              18.702507019042972
+            ],
+            [
+              54.32273091140167,
+              18.708686828613285
+            ],
+            [
+              54.35135417337141,
+              18.70508193969727
+            ],
+            [
+              54.380257441368045,
+              18.685169219970707
+            ],
+            [
+              54.396950058174404,
+              18.691692352294925
+            ],
+            [
+              54.40704229804531,
+              18.68087768554688
+            ],
+            [
+              54.40654274063189,
+              18.674526214599613
+            ]
+          ]
+        },
+        {
+          "id": "tunel_martwa_wisla",
+          "name": "Tunel pod Martwą Wisłą",
+          "city": "Gdańsk",
+          "geofence_type": "BOTTLENECK",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.376633,
+            "max_lat": 54.38823,
+            "min_lon": 18.650494,
+            "max_lon": 18.678346
+          },
+          "terminals": [
+            "DCT"
+          ],
+          "polygon": [
+            [
+              54.38645549279456,
+              18.650493621826175
+            ],
+            [
+              54.37663314705467,
+              18.674397468566898
+            ],
+            [
+              54.38018245921,
+              18.67834568023682
+            ],
+            [
+              54.3882297626079,
+              18.652768135070804
+            ]
+          ]
+        },
+        {
+          "id": "marynarki_polskiej",
+          "name": "Marynarki Polskiej",
+          "city": "Gdańsk",
+          "geofence_type": "APPROACH_CORRIDOR",
+          "business_priority": "HIGH",
+          "logistics_weight": 8,
+          "priority_weight": 0.8,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.362577,
+            "max_lat": 54.398868,
+            "min_lon": 18.627454,
+            "max_lon": 18.667194
+          },
+          "terminals": [
+            "DCT"
+          ],
+          "polygon": [
+            [
+              54.39886817206905,
+              18.665048256661724
+            ],
+            [
+              54.376777522572084,
+              18.627797737862895
+            ],
+            [
+              54.37382787107726,
+              18.62745441510899
+            ],
+            [
+              54.36257725502381,
+              18.642474785592388
+            ],
+            [
+              54.3640775152456,
+              18.644792214181255
+            ],
+            [
+              54.37472778721712,
+              18.632346764352153
+            ],
+            [
+              54.3774274172929,
+              18.633290901925395
+            ],
+            [
+              54.394870745802564,
+              18.665048256661724
+            ],
+            [
+              54.39771895191156,
+              18.667194023873638
+            ]
+          ]
+        },
+        {
+          "id": "wezel_s7_sucharskiego",
+          "name": "Węzeł S7 / Sucharskiego",
+          "city": "Gdańsk",
+          "geofence_type": "BUFFER_ZONE",
+          "business_priority": "HIGH",
+          "logistics_weight": 7,
+          "priority_weight": 0.7,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.313719,
+            "max_lat": 54.32198,
+            "min_lon": 18.690577,
+            "max_lon": 18.735209
+          },
+          "terminals": [
+            "DCT"
+          ],
+          "polygon": [
+            [
+              54.31827550037823,
+              18.69057655334473
+            ],
+            [
+              54.31371946884494,
+              18.693666458129886
+            ],
+            [
+              54.319527069061465,
+              18.715982437133793
+            ],
+            [
+              54.318976383531435,
+              18.732633590698246
+            ],
+            [
+              54.321379320841594,
+              18.735208511352543
+            ],
+            [
+              54.32198003323949,
+              18.708000183105472
+            ],
+            [
+              54.31807524585571,
+              18.690919876098636
+            ]
+          ]
+        },
+        {
+          "id": "baltic_hub_gate",
+          "name": "Baltic Hub Gate Area",
+          "city": "Gdańsk",
+          "geofence_type": "GATE_ZONE",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.359207,
+            "max_lat": 54.3975,
+            "min_lon": 18.683624,
+            "max_lon": 18.722076
+          },
+          "terminals": [
+            "DCT"
+          ],
+          "polygon": [
+            [
+              54.396300472538925,
+              18.691520690917972
+            ],
+            [
+              54.37840784149066,
+              18.68362426757813
+            ],
+            [
+              54.35920707319746,
+              18.69529724121094
+            ],
+            [
+              54.37765797996172,
+              18.72207641601563
+            ],
+            [
+              54.397499699524666,
+              18.70302200317383
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gdynia",
+      "name": "Port Gdynia",
+      "terminals": [
+        "GCT",
+        "BCT"
+      ],
+      "corridors": [
+        {
+          "id": "estakada_kwiatkowskiego",
+          "name": "Estakada Kwiatkowskiego",
+          "city": "Gdynia",
+          "geofence_type": "APPROACH_CORRIDOR",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.517495,
+            "max_lat": 54.539908,
+            "min_lon": 18.459949,
+            "max_lon": 18.496041
+          },
+          "terminals": [
+            "GCT",
+            "BCT"
+          ],
+          "polygon": [
+            [
+              54.517494555626755,
+              18.46037864685059
+            ],
+            [
+              54.518092400807504,
+              18.471965789794925
+            ],
+            [
+              54.530196882916464,
+              18.48655700683594
+            ],
+            [
+              54.53936002962219,
+              18.4960412979126
+            ],
+            [
+              54.53990776127193,
+              18.494668006896976
+            ],
+            [
+              54.53208944046126,
+              18.486514091491703
+            ],
+            [
+              54.52977353566781,
+              18.48162174224854
+            ],
+            [
+              54.52003533720686,
+              18.469991683959964
+            ],
+            [
+              54.518690237236996,
+              18.459949493408207
+            ]
+          ]
+        },
+        {
+          "id": "janka_wisniewskiego",
+          "name": "Janka Wiśniewskiego",
+          "city": "Gdynia",
+          "geofence_type": "APPROACH_CORRIDOR",
+          "business_priority": "HIGH",
+          "logistics_weight": 8,
+          "priority_weight": 0.8,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.52671,
+            "max_lat": 54.540605,
+            "min_lon": 18.496814,
+            "max_lon": 18.518915
+          },
+          "terminals": [
+            "BCT"
+          ],
+          "polygon": [
+            [
+              54.539335132554356,
+              18.49681377410889
+            ],
+            [
+              54.52671036301384,
+              18.516898155212406
+            ],
+            [
+              54.527905774808545,
+              18.518915176391605
+            ],
+            [
+              54.54060486364826,
+              18.499689102172855
+            ],
+            [
+              54.539210646987286,
+              18.49685668945313
+            ]
+          ]
+        },
+        {
+          "id": "ul_polska",
+          "name": "Polska",
+          "city": "Gdynia",
+          "geofence_type": "PORT_ACCESS",
+          "business_priority": "HIGH",
+          "logistics_weight": 8,
+          "priority_weight": 0.8,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.526387,
+            "max_lat": 54.533758,
+            "min_lon": 18.519773,
+            "max_lon": 18.548527
+          },
+          "terminals": [
+            "GCT"
+          ],
+          "polygon": [
+            [
+              54.526436409547884,
+              18.52007389068604
+            ],
+            [
+              54.52638659962934,
+              18.530974388122562
+            ],
+            [
+              54.53246296118798,
+              18.547925949096683
+            ],
+            [
+              54.533757806578805,
+              18.54852676391602
+            ],
+            [
+              54.52715864653855,
+              18.525953292846683
+            ],
+            [
+              54.52743259515839,
+              18.51977348327637
+            ]
+          ]
+        },
+        {
+          "id": "s6_wezel_estakada",
+          "name": "Węzeł Obwodnicy Trójmiasta → Estakada",
+          "city": "Gdynia",
+          "geofence_type": "BUFFER_ZONE",
+          "business_priority": "HIGH",
+          "logistics_weight": 7,
+          "priority_weight": 0.7,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 54.498459,
+            "max_lat": 54.542597,
+            "min_lon": 18.452568,
+            "max_lon": 18.468189
+          },
+          "terminals": [
+            "GCT",
+            "BCT"
+          ],
+          "polygon": [
+            [
+              54.542596519107235,
+              18.452568054199222
+            ],
+            [
+              54.5158006134232,
+              18.453769683837894
+            ],
+            [
+              54.49845857695077,
+              18.456687927246097
+            ],
+            [
+              54.49925607339952,
+              18.468189239501957
+            ],
+            [
+              54.52167928811776,
+              18.461666107177738
+            ],
+            [
+              54.530246688186516,
+              18.459434509277347
+            ],
+            [
+              54.54199903267644,
+              18.458061218261722
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "szczecin",
+      "name": "Port Szczecin",
+      "terminals": [
+        "DBPS"
+      ],
+      "corridors": [
+        {
+          "id": "dk10_stargard",
+          "name": "DK10 (od strony Stargardu)",
+          "city": "Szczecin",
+          "geofence_type": "APPROACH_CORRIDOR",
+          "business_priority": "HIGH",
+          "logistics_weight": 8,
+          "priority_weight": 0.8,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.408,
+            "max_lat": 53.478,
+            "min_lon": 14.608,
+            "max_lon": 14.718
+          },
+          "terminals": [
+            "DBPS"
+          ]
+        },
+        {
+          "id": "a6_szczecin",
+          "name": "A6 → Szczecin",
+          "city": "Szczecin",
+          "geofence_type": "BUFFER_ZONE",
+          "business_priority": "HIGH",
+          "logistics_weight": 7,
+          "priority_weight": 0.7,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.418,
+            "max_lat": 53.488,
+            "min_lon": 14.448,
+            "max_lon": 14.588
+          },
+          "terminals": [
+            "DBPS"
+          ]
+        },
+        {
+          "id": "ul_gdanska",
+          "name": "Ulica Gdańska",
+          "city": "Szczecin",
+          "geofence_type": "APPROACH_CORRIDOR",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.428,
+            "max_lat": 53.462,
+            "min_lon": 14.522,
+            "max_lon": 14.562
+          },
+          "terminals": [
+            "DBPS"
+          ]
+        },
+        {
+          "id": "ul_energetykow",
+          "name": "Energetyków",
+          "city": "Szczecin",
+          "geofence_type": "PORT_ACCESS",
+          "business_priority": "HIGH",
+          "logistics_weight": 8,
+          "priority_weight": 0.8,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.412,
+            "max_lat": 53.442,
+            "min_lon": 14.532,
+            "max_lon": 14.572
+          },
+          "terminals": [
+            "DBPS"
+          ]
+        },
+        {
+          "id": "basen_gorniczy",
+          "name": "Rejon Basenu Górniczego",
+          "city": "Szczecin",
+          "geofence_type": "GATE_ZONE",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.402,
+            "max_lat": 53.432,
+            "min_lon": 14.542,
+            "max_lon": 14.582
+          },
+          "terminals": [
+            "DBPS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "swinoujscie",
+      "name": "Port Świnoujście",
+      "terminals": [],
+      "corridors": [
+        {
+          "id": "s3_swinoujscie",
+          "name": "S3",
+          "city": "Świnoujście",
+          "geofence_type": "APPROACH_CORRIDOR",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.892,
+            "max_lat": 53.938,
+            "min_lon": 14.208,
+            "max_lon": 14.278
+          },
+          "terminals": []
+        },
+        {
+          "id": "tunel_swinoujscie",
+          "name": "Tunel w Świnoujściu",
+          "city": "Świnoujście",
+          "geofence_type": "BOTTLENECK",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.904,
+            "max_lat": 53.922,
+            "min_lon": 14.242,
+            "max_lon": 14.268
+          },
+          "terminals": []
+        },
+        {
+          "id": "terminal_promowy",
+          "name": "Terminal Promowy",
+          "city": "Świnoujście",
+          "geofence_type": "GATE_ZONE",
+          "business_priority": "HIGH",
+          "logistics_weight": 8,
+          "priority_weight": 0.8,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.906,
+            "max_lat": 53.924,
+            "min_lon": 14.25,
+            "max_lon": 14.282
+          },
+          "terminals": []
+        },
+        {
+          "id": "terminal_lng",
+          "name": "Terminal LNG",
+          "city": "Świnoujście",
+          "geofence_type": "CRITICAL_INFRASTRUCTURE",
+          "business_priority": "CRITICAL",
+          "logistics_weight": 10,
+          "priority_weight": 1.0,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.914,
+            "max_lat": 53.936,
+            "min_lon": 14.22,
+            "max_lon": 14.258
+          },
+          "terminals": []
+        },
+        {
+          "id": "wezel_s3_port",
+          "name": "Rejon Węzła S3 → Port",
+          "city": "Świnoujście",
+          "geofence_type": "BUFFER_ZONE",
+          "business_priority": "HIGH",
+          "logistics_weight": 7,
+          "priority_weight": 0.7,
+          "impacts_port_access": true,
+          "bbox": {
+            "min_lat": 53.896,
+            "max_lat": 53.918,
+            "min_lon": 14.228,
+            "max_lon": 14.262
+          },
+          "terminals": []
+        }
+      ]
+    }
+  ]
+}

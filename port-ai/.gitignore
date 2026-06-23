@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+
+# Runtime SQLite time-series store (regenerated on backend start)
+backend/corridor_observations.db
+
+# OS
+.DS_Store
