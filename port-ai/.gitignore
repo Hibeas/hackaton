@@ -7,6 +7,7 @@ backend/.env
 
 # Runtime SQLite time-series store (regenerated on backend start)
 backend/corridor_observations.db
+backend/data/port/port.db
 
 # OS
 .DS_Store

@@ -9,9 +9,11 @@ import type {
 } from '../types/engine'
 import { filterUiPorts, UI_VISIBLE_PORT_IDS } from '../utils/corridorConfigHelpers'
 import { formatDateTime } from '../utils/trafficFormat'
+import type { PortOperationsPayload } from '../types/portOps'
 import { BottleneckList } from './BottleneckList'
 import { CorridorCard } from './CorridorCard'
 import { EngineEventCard } from './EngineEventCard'
+import { PortOpsPanel } from './PortOpsPanel'
 import { PortTabs } from './PortTabs'
 
 interface EngineDashboardProps {
@@ -19,6 +21,7 @@ interface EngineDashboardProps {
   engineEvents: EngineEventsResponse | null
   corridors: CorridorsResponse | null
   bottlenecks: BottlenecksResponse | null
+  portOperations: PortOperationsPayload | null | undefined
   selectedPortId: string
   selectedCorridorId: string | null
   onPortSelect: (portId: string) => void
@@ -30,6 +33,7 @@ export function EngineDashboard({
   engineEvents,
   corridors,
   bottlenecks,
+  portOperations,
   selectedPortId,
   selectedCorridorId,
   onPortSelect,
@@ -91,6 +95,8 @@ export function EngineDashboard({
           {t('engine.activeEvents')}: {engineEvents?.active_count ?? 0}
         </p>
       </header>
+
+      <PortOpsPanel portOperations={portOperations} selectedPortId={selectedPortId} />
 
       <PortTabs
         ports={sortedPorts}

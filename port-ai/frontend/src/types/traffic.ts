@@ -1,3 +1,5 @@
+import type { PortOperationsPayload } from './portOps'
+
 export type TrafficStatus = 'CRITICAL' | 'CONGESTION' | 'CLEAR'
 
 export type Verdict = 'NORMAL' | 'ANOMALY' | 'WATCH' | 'CALM'
@@ -74,6 +76,7 @@ export interface MapDataResponse {
   primary: MapDataLayer
   context: MapDataLayer
   heatmap?: TomTomHeatmapLayer
+  port_operations?: PortOperationsPayload
   events: TrafficEvent[]
   cached_at: string | null
   age_seconds: number | null

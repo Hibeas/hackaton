@@ -115,7 +115,32 @@
     "zoomGdynia": "Gdynia",
     "zoomRegion": "Cały region",
     "heatmapFlowTiles": "TomTom Flow (live)",
-    "heatmapIncidents": "Heatmapa incydentów ({{count}})"
+    "heatmapIncidents": "Heatmapa incydentów ({{count}})",
+    "terminalsLayer": "Terminale ({{count}})",
+    "tirZonesLayer": "Strefy TIR ({{count}})",
+    "renderError": "Błąd renderowania mapy — odśwież stronę"
+  },
+  "portOps": {
+    "title": "Operacje portowe",
+    "loading": "Ładowanie danych PCS/CODECO…",
+    "updatedAt": "Dane PCS",
+    "collapse": "Zwiń",
+    "expand": "Rozwiń",
+    "callsInPort": "Statki w porcie: {{count}}",
+    "gateMoves": "Ruchy bramkowe (baza): {{count}}",
+    "activeTerminals": "Aktywne terminale: {{active}} / {{total}}",
+    "movesLastHour": "{{count}} ruch/h",
+    "moves24h": "24h: {{count}}",
+    "terminalIdle": "Brak ruchu w ostatniej godzinie",
+    "activeYes": "aktywny",
+    "activeNo": "bez ruchu",
+    "zonePopup": "<strong>{{label}}</strong><br/>Terminal: {{terminal}}<br/>Status: {{status}}<br/>Ruch/h: {{moves}} · {{active}}",
+    "demand": {
+      "high": "Wysoki popyt TIR",
+      "medium": "Średni popyt TIR",
+      "low": "Niski popyt TIR",
+      "idle": "Bez ruchu"
+    }
   },
   "language": {
     "label": "Język",

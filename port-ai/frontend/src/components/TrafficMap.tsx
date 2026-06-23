@@ -25,12 +25,16 @@ import {
   splitPrimaryEvents,
 } from '../utils/trafficFormat'
 import { TomTomHeatmapLayer } from './TomTomHeatmapLayer'
+import { TerminalMarkers } from './TerminalMarkers'
+import type { TerminalCatalogEntry } from '../types/portOps'
+import { filterVisibleTerminals } from '../utils/portOpsHelpers'
 
 interface TrafficMapProps {
   primary: MapDataLayer
   context: MapDataLayer
   heatmapPoints?: HeatmapPoint[]
   flowTileUrl?: string
+  terminals?: TerminalCatalogEntry[]
   focusBbox?: CorridorBbox | null
   focusPolygon?: LatLng[] | null
 }
@@ -114,15 +118,21 @@ function MapViewControls() {
 function HeatmapControls({
   showFlowTiles,
   showIncidentHeat,
+  showTerminals,
   onToggleFlowTiles,
   onToggleIncidentHeat,
+  onToggleTerminals,
   pointCount,
+  terminalCount,
 }: {
   showFlowTiles: boolean
   showIncidentHeat: boolean
+  showTerminals: boolean
   onToggleFlowTiles: () => void
   onToggleIncidentHeat: () => void
+  onToggleTerminals: () => void
   pointCount: number
+  terminalCount: number
 }) {
   const { t } = useTranslation()
 
@@ -143,6 +153,15 @@ function HeatmapControls({
         onClick={onToggleIncidentHeat}
       >
         {t('map.heatmapIncidents', { count: pointCount })}
+      </button>
+      <button
+        type="button"
+        className={
+          showTerminals ? 'heatmap-controls__btn heatmap-controls__btn--active' : 'heatmap-controls__btn'
+        }
+        onClick={onToggleTerminals}
+      >
+        {t('map.terminalsLayer', { count: terminalCount })}
       </button>
     </div>
   )
@@ -317,11 +336,15 @@ export function TrafficMap({
   context,
   heatmapPoints = [],
   flowTileUrl = '/api/v1/tomtom/tiles/flow/relative0/{z}/{x}/{y}.png',
+  terminals = [],
   focusBbox,
   focusPolygon,
 }: TrafficMapProps) {
   const [showFlowTiles, setShowFlowTiles] = useState(true)
   const [showIncidentHeat, setShowIncidentHeat] = useState(true)
+  const [showTerminals, setShowTerminals] = useState(true)
+
+  const visibleTerminals = useMemo(() => filterVisibleTerminals(terminals), [terminals])
 
   const { segments, vehicles } = useMemo(
     () => splitContextEvents(context.events),
@@ -350,6 +373,7 @@ export function TrafficMap({
           />
         ) : null}
         <TomTomHeatmapLayer points={heatmapPoints} enabled={showIncidentHeat} />
+        {showTerminals ? <TerminalMarkers terminals={visibleTerminals} /> : null}
         <ContextSegmentLayer segments={segments} />
         <ContextVehicleMarkers vehicles={vehicles} />
         <IncidentLayer incidents={primary.events} />
@@ -360,9 +384,12 @@ export function TrafficMap({
       <HeatmapControls
         showFlowTiles={showFlowTiles}
         showIncidentHeat={showIncidentHeat}
+        showTerminals={showTerminals}
         onToggleFlowTiles={() => setShowFlowTiles((value) => !value)}
         onToggleIncidentHeat={() => setShowIncidentHeat((value) => !value)}
+        onToggleTerminals={() => setShowTerminals((value) => !value)}
         pointCount={heatmapPoints.length}
+        terminalCount={visibleTerminals.length}
       />
     </div>
   )

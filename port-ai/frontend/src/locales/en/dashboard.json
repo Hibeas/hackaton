@@ -115,7 +115,32 @@
     "zoomGdynia": "Gdynia",
     "zoomRegion": "Full region",
     "heatmapFlowTiles": "TomTom Flow (live)",
-    "heatmapIncidents": "Incident heatmap ({{count}})"
+    "heatmapIncidents": "Incident heatmap ({{count}})",
+    "terminalsLayer": "Terminals ({{count}})",
+    "tirZonesLayer": "TIR zones ({{count}})",
+    "renderError": "Map failed to render — refresh the page"
+  },
+  "portOps": {
+    "title": "Port operations",
+    "loading": "Loading PCS/CODECO data…",
+    "updatedAt": "PCS data",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "callsInPort": "Vessels in port: {{count}}",
+    "gateMoves": "Gate moves (db): {{count}}",
+    "activeTerminals": "Active terminals: {{active}} / {{total}}",
+    "movesLastHour": "{{count}} moves/h",
+    "moves24h": "24h: {{count}}",
+    "terminalIdle": "No moves in the last hour",
+    "activeYes": "active",
+    "activeNo": "idle",
+    "zonePopup": "<strong>{{label}}</strong><br/>Terminal: {{terminal}}<br/>Status: {{status}}<br/>Moves/h: {{moves}} · {{active}}",
+    "demand": {
+      "high": "High TIR demand",
+      "medium": "Medium TIR demand",
+      "low": "Low TIR demand",
+      "idle": "Idle"
+    }
   },
   "language": {
     "label": "Language",

@@ -30,7 +30,14 @@ from corridor_service import (
     update_port_geometry,
 )
 from observation_store import ObservationStore
+from port_data_loader import port_data_store
 from port_demand import analyze_cities, load_baseline
+from port_events import (
+    build_approach_zones,
+    build_city_port_dashboard,
+    build_port_summary,
+    build_terminals_catalog,
+)
 from tomtom_service import TOMTOM_API_KEY, build_heatmap_points, collect_tomtom_events
 
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +51,7 @@ GDANSK_GPS_URL = "https://ckan2.multimediagdansk.pl/gpsPositions?v=2"
 REQUEST_TIMEOUT = 15.0
 CACHE_REFRESH_INTERVAL_SECONDS = 30.0
 GDYNIA_API_UPDATE_INTERVAL_SECONDS = 300.0
+PORT_DATA_REFRESH_INTERVAL_SECONDS = 300.0
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:8081")
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "port-traffic-events")
 KAFKA_PUBLISH_ON_REFRESH = os.environ.get("KAFKA_PUBLISH_ON_REFRESH", "true").lower() in {
@@ -55,6 +63,7 @@ KAFKA_PUBLISH_ON_REFRESH = os.environ.get("KAFKA_PUBLISH_ON_REFRESH", "true").lo
 kafka_producer: AIOKafkaProducer | None = None
 cache_refresh_task: asyncio.Task[None] | None = None
 gdynia_watch_task: asyncio.Task[None] | None = None
+port_data_refresh_task: asyncio.Task[None] | None = None
 
 
 class TrafficCache:
@@ -195,9 +204,24 @@ async def gdynia_watch_loop() -> None:
             logger.warning("Gdynia watch loop failed: %s", exc)
 
 
+async def port_data_refresh_loop() -> None:
+    """Refresh PCS Excel → SQLite cache for terminal/port operations."""
+    while True:
+        try:
+            await asyncio.to_thread(port_data_store.refresh)
+            logger.info(
+                "Port PCS data refreshed (%s moves, %s calls)",
+                len(port_data_store.container_moves),
+                len(port_data_store.port_calls),
+            )
+        except Exception as exc:
+            logger.warning("Port PCS refresh failed: %s", exc)
+        await asyncio.sleep(PORT_DATA_REFRESH_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global kafka_producer, cache_refresh_task, gdynia_watch_task
+    global kafka_producer, cache_refresh_task, gdynia_watch_task, port_data_refresh_task
     producer = AIOKafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         value_serializer=lambda value: json.dumps(value, ensure_ascii=False).encode("utf-8"),
@@ -212,18 +236,26 @@ async def lifespan(_: FastAPI):
         logger.warning("Kafka producer unavailable: %s", exc)
 
     try:
+        await asyncio.to_thread(port_data_store.refresh)
+        logger.info("Initial port PCS data load complete")
+    except Exception as exc:
+        logger.warning("Initial port PCS data load failed: %s", exc)
+
+    try:
         await traffic_cache.refresh(is_startup=True)
     except Exception as exc:
         logger.warning("Initial cache refresh on startup failed: %s", exc)
 
     cache_refresh_task = asyncio.create_task(cache_refresh_loop())
     gdynia_watch_task = asyncio.create_task(gdynia_watch_loop())
+    port_data_refresh_task = asyncio.create_task(port_data_refresh_loop())
     try:
         yield
     finally:
         for task_name, task in (
             ("cache_refresh_task", cache_refresh_task),
             ("gdynia_watch_task", gdynia_watch_task),
+            ("port_data_refresh_task", port_data_refresh_task),
         ):
             if task is not None:
                 task.cancel()
@@ -233,6 +265,7 @@ async def lifespan(_: FastAPI):
                     pass
         cache_refresh_task = None
         gdynia_watch_task = None
+        port_data_refresh_task = None
         if kafka_producer is not None:
             await kafka_producer.stop()
             kafka_producer = None
@@ -771,6 +804,11 @@ async def get_map_data() -> dict[str, Any]:
         await traffic_cache.refresh(is_startup=True)
         primary, context, updated_at = await traffic_cache.get_snapshot()
 
+    road_events = primary + context
+    terminals_catalog = build_terminals_catalog(port_data_store)
+    approach_zones = build_approach_zones(port_data_store, traffic_events=road_events)
+    city_port_dashboard = build_city_port_dashboard(port_data_store, traffic_events=road_events)
+
     return {
         "primary": {
             "source": "tomtom",
@@ -785,6 +823,13 @@ async def get_map_data() -> dict[str, Any]:
             "source": "tomtom",
             "points": build_heatmap_points(primary),
             "flow_tile_url": "/api/v1/tomtom/tiles/flow/relative0/{z}/{x}/{y}.png",
+        },
+        "port_operations": {
+            "summary": build_port_summary(port_data_store, traffic_events=road_events),
+            "terminals_catalog": terminals_catalog,
+            "approach_zones": approach_zones,
+            "city_port_dashboard": city_port_dashboard,
+            "updated_at": port_data_store.updated_at.isoformat() if port_data_store.updated_at else None,
         },
         "events": primary,
         "cached_at": updated_at.isoformat() if updated_at else None,

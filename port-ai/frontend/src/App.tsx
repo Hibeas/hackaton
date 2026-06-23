@@ -6,6 +6,7 @@ import { EngineDashboard } from './components/EngineDashboard'
 import { LanguageSwitcher } from './components/LanguageSwitcher'
 import { StatusBar } from './components/StatusBar'
 import { TrafficMap } from './components/TrafficMap'
+import { MapErrorBoundary } from './components/MapErrorBoundary'
 import { useTrafficDashboard } from './hooks/useTrafficDashboard'
 import { filterUiPorts, resolveFocusGeometry } from './utils/corridorConfigHelpers'
 import './App.css'
@@ -65,14 +66,17 @@ function DashboardView() {
       <main className="app-main">
         <div className="map-panel">
           {mapData?.primary ? (
-            <TrafficMap
-              primary={mapData.primary}
-              context={mapData.context}
-              heatmapPoints={mapData.heatmap?.points ?? []}
-              flowTileUrl={mapData.heatmap?.flow_tile_url}
-              focusBbox={focusGeometry.bbox}
-              focusPolygon={focusGeometry.polygon}
-            />
+            <MapErrorBoundary fallback={<div className="map-placeholder">{t('map.renderError')}</div>}>
+              <TrafficMap
+                primary={mapData.primary}
+                context={mapData.context}
+                heatmapPoints={mapData.heatmap?.points ?? []}
+                flowTileUrl={mapData.heatmap?.flow_tile_url}
+                terminals={mapData.port_operations?.terminals_catalog ?? []}
+                focusBbox={focusGeometry.bbox}
+                focusPolygon={focusGeometry.polygon}
+              />
+            </MapErrorBoundary>
           ) : (
             <div className="map-placeholder" />
           )}
@@ -86,6 +90,7 @@ function DashboardView() {
           engineEvents={engineEvents}
           corridors={corridors}
           bottlenecks={bottlenecks}
+          portOperations={mapData?.port_operations}
           selectedPortId={selectedPortId}
           selectedCorridorId={selectedCorridorId}
           onPortSelect={handlePortSelect}
