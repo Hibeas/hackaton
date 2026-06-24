@@ -15,7 +15,7 @@ import httpx
 import xmltodict
 from aiokafka import AIOKafkaProducer
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 
@@ -56,6 +56,7 @@ from slot_dispatch_service import (
     SLOT_DISPATCH_MIN_DELAY_SEC,
     slot_dispatch_service,
 )
+from tms.bookings_service import build_my_bookings, cancel_my_booking, reschedule_my_booking
 from tms.database import tms_database
 from tms.store import tms_store
 from voice_call_service import (
@@ -1277,6 +1278,82 @@ async def auth_me(current_user: dict[str, Any] = Depends(get_current_user)) -> d
     return current_user
 
 
+@app.get("/api/v1/tms/my-bookings")
+async def get_my_bookings(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """Gate slot reservations (awizacje) owned by the logged-in account."""
+    user_id = str(current_user.get("id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="bookings_user_missing")
+    return build_my_bookings(
+        user_id,
+        phone_e164=str(current_user.get("phone_e164") or ""),
+        contact_name=str(current_user.get("full_name") or ""),
+        company_name=str(current_user.get("full_name") or ""),
+    )
+
+
+class BookingRescheduleRequest(BaseModel):
+    offset_minutes: int | None = Field(default=None, ge=15, le=480)
+    window_start_at: str | None = Field(default=None, description="ISO-8601 start of rescheduled slot window")
+
+    @model_validator(mode="after")
+    def validate_reschedule_mode(self) -> "BookingRescheduleRequest":
+        has_offset = self.offset_minutes is not None
+        has_window = bool((self.window_start_at or "").strip())
+        if has_offset == has_window:
+            raise ValueError("invalid_reschedule_payload")
+        return self
+
+
+@app.post("/api/v1/tms/my-bookings/{provider_id}/{slot_id}/cancel")
+async def cancel_booking(
+    provider_id: str,
+    slot_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    user_id = str(current_user.get("id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="bookings_user_missing")
+    try:
+        return cancel_my_booking(user_id, provider_id=provider_id, slot_id=slot_id)
+    except ValueError as exc:
+        if str(exc) == "booking_not_found":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/tms/my-bookings/{provider_id}/{slot_id}/reschedule")
+async def reschedule_booking(
+    provider_id: str,
+    slot_id: str,
+    body: BookingRescheduleRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    user_id = str(current_user.get("id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="bookings_user_missing")
+    try:
+        window_start: datetime | None = None
+        if body.window_start_at:
+            raw = body.window_start_at.strip().replace("Z", "+00:00")
+            window_start = datetime.fromisoformat(raw)
+            if window_start.tzinfo is None:
+                window_start = window_start.replace(tzinfo=timezone.utc)
+        return reschedule_my_booking(
+            user_id,
+            provider_id=provider_id,
+            slot_id=slot_id,
+            offset_minutes=body.offset_minutes,
+            window_start_at=window_start,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code in {"booking_not_found", "invalid_reschedule_payload", "invalid_offset_minutes"}:
+            status = 404 if code == "booking_not_found" else 400
+            raise HTTPException(status_code=status, detail=code) from exc
+        raise HTTPException(status_code=400, detail="invalid_reschedule_payload") from exc
+
+
 @app.get("/api/v1/tms/snapshot")
 async def get_tms_snapshot() -> dict[str, Any]:
     """Canonical TMS snapshot (mock carrier adapters aggregated)."""
@@ -1345,7 +1422,7 @@ class BalticHubSpikeRequest(BaseModel):
 class CorridorSpikeRequest(BaseModel):
     corridor_id: str = Field(..., min_length=1, max_length=120)
     phone_e164: str | None = Field(default=None, description="Override call target (default VOICE_CALL_DEMO_TO)")
-    dry_run: bool = Field(default=True, description="Skip voice calls (default for demo without ElevenLabs)")
+    dry_run: bool = Field(default=False, description="Skip voice calls")
     force: bool = Field(default=True, description="Bypass call cooldown")
 
 
@@ -1367,20 +1444,26 @@ async def demo_crowd_map(
 
 
 @app.post("/api/v1/demo/corridor-spike")
-async def demo_corridor_spike(body: CorridorSpikeRequest) -> dict[str, Any]:
+async def demo_corridor_spike(
+    body: CorridorSpikeRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """One-shot demo: inject synthetic delay spike on a corridor, book slot, call spedition."""
     phone = (
-        body.phone_e164
-        if body.phone_e164
-        else os.environ.get("VOICE_CALL_DEMO_TO", "+48728538889")
-    ).strip()
+        os.environ.get("VOICE_CALL_DEMO_TO", "").strip()
+        or (body.phone_e164 or "").strip()
+    )
+    if not phone:
+        raise HTTPException(status_code=400, detail="voice_demo_to_missing")
     if not body.dry_run and not is_voice_call_configured():
         raise HTTPException(status_code=503, detail="voice_not_configured")
+    owner_user_id = str(current_user.get("id") or "").strip() or None
     try:
         return await run_corridor_spike_demo(
             corridor_id=body.corridor_id.strip(),
             observation_store=observation_store,
             phone_e164=phone,
+            owner_user_id=owner_user_id,
             dry_run=body.dry_run,
             force_call=body.force,
         )
@@ -1399,8 +1482,10 @@ async def demo_baltic_hub_spike(body: BalticHubSpikeRequest | None = None) -> di
     phone = (
         body.phone_e164
         if body and body.phone_e164
-        else os.environ.get("VOICE_CALL_DEMO_TO", "+48728538889")
+        else os.environ.get("VOICE_CALL_DEMO_TO", "")
     ).strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="voice_demo_to_missing")
     if not body or not body.dry_run:
         if not is_voice_call_configured():
             raise HTTPException(status_code=503, detail="voice_not_configured")

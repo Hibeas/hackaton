@@ -10,6 +10,8 @@ import type { DashboardMode } from '../constants/forecast'
 import { UI_VISIBLE_PORT_IDS } from '../utils/corridorConfigHelpers'
 import { ForecastPanel } from './dashboard/ForecastPanel'
 import { OverviewPanel } from './dashboard/OverviewPanel'
+import { BookingsPanel } from './dashboard/BookingsPanel'
+import { useMyBookings } from '../hooks/useMyBookings'
 
 interface DashboardSidebarProps {
   engineEvents: EngineEventsResponse | null
@@ -21,6 +23,7 @@ interface DashboardSidebarProps {
   selectedPortId: string
   selectedCorridorId: string | null
   onCorridorSelect: (corridorId: string) => void
+  onSwitchToLive?: () => void
 }
 
 export function DashboardSidebar({
@@ -33,7 +36,11 @@ export function DashboardSidebar({
   selectedPortId,
   selectedCorridorId,
   onCorridorSelect,
+  onSwitchToLive,
 }: DashboardSidebarProps) {
+  const bookingsEnabled = dashboardMode === 'bookings'
+  const { data: bookingsData, isLoading: bookingsLoading, error: bookingsError, refresh: refreshBookings } =
+    useMyBookings(bookingsEnabled)
   const portCorridors = useMemo(
     () => (corridors?.corridors ?? []).filter((item) => item.port_id === selectedPortId),
     [corridors, selectedPortId],
@@ -84,6 +91,20 @@ export function DashboardSidebar({
             forecastHorizon={forecastHorizon}
             selectedCorridorId={selectedCorridorId}
             onCorridorSelect={onCorridorSelect}
+          />
+        ) : dashboardMode === 'bookings' ? (
+          <BookingsPanel
+            bookings={bookingsData?.bookings ?? []}
+            total={bookingsData?.total ?? 0}
+            isLoading={bookingsLoading}
+            error={bookingsError}
+            onRefresh={() => {
+              void refreshBookings()
+            }}
+            onSelectCorridor={(corridorId) => {
+              onCorridorSelect(corridorId)
+              onSwitchToLive?.()
+            }}
           />
         ) : (
           <OverviewPanel

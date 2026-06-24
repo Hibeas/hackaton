@@ -6,6 +6,11 @@ ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ N
 ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS at_risk_since TIMESTAMPTZ;
 ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS window_start_at TIMESTAMPTZ;
 ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS window_end_at TIMESTAMPTZ;
+ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS owner_user_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_tms_slot_templates_owner
+  ON tms_slot_templates (owner_user_id)
+  WHERE owner_user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS tms_slot_calls (
   id BIGSERIAL PRIMARY KEY,

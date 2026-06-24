@@ -8,6 +8,7 @@ spedition for the current half-hour, then runs slot dispatch (Twilio voice).
 from __future__ import annotations
 
 import logging
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -28,7 +29,7 @@ CORRIDOR_ID = "baltic_hub_gate"
 CORRIDOR_NAME = "Baltic Hub Gate Area"
 PORT_ID = "gdansk"
 TERMINAL_CODE = "BCT"
-DEFAULT_PHONE = "+48728538889"
+DEFAULT_PHONE = os.environ.get("VOICE_CALL_DEMO_TO", "").strip() or "+48728538889"
 SPIKE_DELAY_SEC = 960  # 16 min — above default 600 s threshold
 
 PORT_TERMINAL_FALLBACK: dict[str, str] = {
@@ -83,6 +84,7 @@ def ensure_demo_slot_and_spedition(
     *,
     corridor_id: str,
     phone_e164: str = DEFAULT_PHONE,
+    owner_user_id: str | None = None,
     contact_name: str | None = None,
     company_name: str | None = None,
 ) -> dict[str, Any]:
@@ -91,7 +93,8 @@ def ensure_demo_slot_and_spedition(
     now_local = _now_local()
     start_hour, start_minute, start = _slot_window_for_now(now_local)
     terminal_code = context["terminal_code"]
-    slot_id = f"SLOT-{terminal_code}-DEMO-{start.strftime('%H%M')}"
+    corridor_slug = _slug(corridor_id)
+    slot_id = f"SLOT-{terminal_code}-DEMO-{corridor_slug}-{start.strftime('%H%M')}"
     window_end = start + timedelta(minutes=45)
     window_start_utc = start.astimezone(timezone.utc)
     window_end_utc = window_end.astimezone(timezone.utc)
@@ -121,14 +124,15 @@ def ensure_demo_slot_and_spedition(
             "duration_minutes": 45,
             "container_count": 2,
             "booking_ref": booking_ref,
-            "status": "at_risk",
+            "status": "confirmed",
             "corridor_ids": context["corridor_ids_for_slot"],
             "window_start_at": window_start_utc.isoformat(),
             "window_end_at": window_end_utc.isoformat(),
-            "at_risk_since": now_local.astimezone(timezone.utc).isoformat(),
+            "owner_user_id": owner_user_id,
         },
     )
     spedition_id = f"SPD-DEMO-{_slug(corridor_id)}"
+    tms_database.clear_spedition_links_for_slot("mock_msc", slot_id)
     tms_database.upsert_spedition(
         "mock_msc",
         {
@@ -150,7 +154,7 @@ def ensure_demo_slot_and_spedition(
         "slot_local": f"{start_hour:02d}:{start_minute:02d}",
         "spedition_id": spedition_id,
         "phone_e164": phone_e164,
-        "operator_user_id": operator.get("id") if operator else None,
+        "operator_user_id": owner_user_id or (operator.get("id") if operator else None),
         "user_database": user_store.backend_name,
     }
 
@@ -266,12 +270,17 @@ async def run_corridor_spike_demo(
     corridor_id: str,
     observation_store: Any,
     phone_e164: str = DEFAULT_PHONE,
+    owner_user_id: str | None = None,
     peak_delay_sec: int = SPIKE_DELAY_SEC,
     dry_run: bool = False,
     force_call: bool = True,
     voice_call_fn: Any | None = None,
 ) -> dict[str, Any]:
-    slot_info = ensure_demo_slot_and_spedition(corridor_id=corridor_id, phone_e164=phone_e164)
+    slot_info = ensure_demo_slot_and_spedition(
+        corridor_id=corridor_id,
+        phone_e164=phone_e164,
+        owner_user_id=owner_user_id,
+    )
     spike_info = inject_corridor_spike(
         corridor_id=corridor_id,
         observation_store=observation_store,
@@ -293,11 +302,14 @@ async def run_corridor_spike_demo(
         dry_run=dry_run,
         force=force_call,
         voice_call_fn=voice_call_fn,
+        only_slot_ids=[slot_info["slot_id"]],
     )
 
     return {
         "ok": True,
         "corridor_id": corridor_id,
+        "phone_e164": phone_e164,
+        "dry_run": dry_run,
         "slot": slot_info,
         "spike": spike_info,
         "corridor_forecasts": corridor_forecasts,

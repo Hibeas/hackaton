@@ -8,7 +8,8 @@
     "modeNavigation": "Tryb panelu",
     "mode": {
       "live": "Live",
-      "forecast": "Predykcja"
+      "forecast": "Predykcja",
+      "bookings": "Awizacje"
     }
   },
   "overview": {
@@ -279,7 +280,62 @@
     "error": "Błąd",
     "errorNotConfigured": "Brak TWILIO/ELEVENLABS w backend/.env",
     "errorCorridorNotFound": "Nie znaleziono korytarza w konfiguracji backendu",
-    "errorProvider": "Błąd ElevenLabs/Twilio — sprawdź logi backendu"
+    "errorProvider": "Błąd ElevenLabs/Twilio — sprawdź logi backendu",
+    "errorNoPhone": "Brak numeru — ustaw VOICE_CALL_DEMO_TO w .env lub telefon w profilu",
+    "errorTwilioTrial": "Twilio trial — numer musi być zweryfikowany w Twilio Console (Verified Caller IDs)",
+    "noCall": "Spike OK, ale brak połączenia — zobacz debug",
+    "debugTitle": "Debug spike / Twilio (tymczasowe)"
+  },
+  "bookings": {
+    "title": "Moje awizacje",
+    "summary": "Sloty bramowe przypisane do Twojego konta.",
+    "atRiskSummary": "{{count}} slot(ów) zagrożonych — sprawdź przed wyjazdem.",
+    "empty": "Brak aktywnych awizacji na dziś.",
+    "refresh": "Odśwież",
+    "refreshing": "Ładowanie…",
+    "ref": "Rezerwacja",
+    "port": "Port",
+    "containers": "Kontenery",
+    "call": "Połączenie",
+    "showOnMap": "Pokaż korytarz na mapie",
+    "rescheduleLabel": "Szybka zmiana terminu",
+    "customToggle": "Inny termin",
+    "customLabel": "Wybierz nowy początek slotu",
+    "customApply": "Zastosuj",
+    "cancel": "Anuluj",
+    "working": "Zapisuję…",
+    "reschedule": {
+      "30": "+30 min",
+      "60": "+1 h",
+      "120": "+2 h"
+    },
+    "ports": {
+      "gdynia": "Gdynia",
+      "gdansk": "Gdańsk",
+      "szczecin": "Szczecin",
+      "swinoujscie": "Świnoujście"
+    },
+    "status": {
+      "confirmed": "Potwierdzona",
+      "at_risk": "Zagrożona",
+      "completed": "Zakończona",
+      "cancelled": "Anulowana"
+    },
+    "callStatus": {
+      "initiated": "Wysłano alert",
+      "answered": "Odebrano",
+      "failed": "Nieudane",
+      "skipped": "Pominięto"
+    },
+    "errors": {
+      "bookings_user_missing": "Zaloguj się ponownie, aby zobaczyć awizacje.",
+      "bookings_fetch_failed": "Nie udało się pobrać awizacji.",
+      "booking_not_found": "Nie znaleziono awizacji.",
+      "booking_action_failed": "Nie udało się zaktualizować awizacji.",
+      "invalid_offset_minutes": "Nieprawidłowe przesunięcie terminu.",
+      "invalid_reschedule_payload": "Wybierz preset lub własny termin.",
+      "invalid_custom_datetime": "Podaj poprawną datę i godzinę."
+    }
   },
   "language": {
     "label": "Język",

@@ -1,6 +1,6 @@
-export type DashboardMode = 'live' | 'forecast'
+export type DashboardMode = 'live' | 'forecast' | 'bookings'
 
-export const DASHBOARD_MODES: DashboardMode[] = ['live', 'forecast']
+export const DASHBOARD_MODES: DashboardMode[] = ['live', 'forecast', 'bookings']
 
 /** Minutes; 120/180 are ML-only (2h / 3h). */
 export const FORECAST_HORIZONS = [10, 15, 20, 30, 45, 60, 120, 180] as const

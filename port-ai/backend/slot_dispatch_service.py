@@ -46,6 +46,7 @@ class SlotDispatchService:
         *,
         forecasts: list[dict[str, Any]],
         reference: datetime | None = None,
+        only_slot_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         now = reference or datetime.now(timezone.utc)
         day = now.astimezone(LOCAL_TZ).date()
@@ -57,6 +58,7 @@ class SlotDispatchService:
 
         high_risk = self._high_risk_forecasts(forecasts)
         alerts: list[dict[str, Any]] = []
+        slot_filter = {str(item) for item in only_slot_ids} if only_slot_ids else None
 
         for forecast in high_risk:
             corridor_id = str(forecast.get("corridor_id") or "")
@@ -69,6 +71,8 @@ class SlotDispatchService:
             matching_slots = [
                 slot for slot in corridor_slots if self._slot_in_risk_window(slot, now, forecast)
             ]
+            if slot_filter is not None:
+                matching_slots = [slot for slot in matching_slots if slot["slot_id"] in slot_filter]
             if not matching_slots:
                 continue
 
@@ -82,7 +86,7 @@ class SlotDispatchService:
                 slot = {**slot, "status": "at_risk"}
 
                 assigned = spedition_by_slot.get(slot["slot_id"], [])
-                primary = assigned[:1]
+                primary = self._pick_primary_spedition(assigned, slot)
                 message = self._build_alert_message(
                     slot=slot,
                     forecast=forecast,
@@ -126,8 +130,13 @@ class SlotDispatchService:
         voice_call_fn: Any | None = None,
         dry_run: bool = False,
         force: bool = False,
+        only_slot_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        plan = self.build_dispatch_plan(forecasts=forecasts, reference=reference)
+        plan = self.build_dispatch_plan(
+            forecasts=forecasts,
+            reference=reference,
+            only_slot_ids=only_slot_ids,
+        )
         if dry_run:
             plan["auto_enabled"] = SLOT_DISPATCH_AUTO_ENABLED
             plan["dry_run"] = True
@@ -143,7 +152,9 @@ class SlotDispatchService:
         calls: list[dict[str, Any]] = []
         phones_called_this_run: set[str] = set()
 
-        for alert in plan.get("alerts") or []:
+        alerts = self._sort_alerts_for_calling(plan.get("alerts") or [])
+
+        for alert in alerts:
             slot = alert.get("slot") or {}
             if slot.get("status") != "at_risk":
                 calls.append(
@@ -287,6 +298,45 @@ class SlotDispatchService:
 
     def recent_history(self, limit: int = 20) -> list[dict[str, Any]]:
         return list(reversed(self._history[-limit:]))
+
+    def _pick_primary_spedition(
+        self,
+        speditions: list[CanonicalSpedition],
+        slot: CanonicalSlot,
+    ) -> list[CanonicalSpedition]:
+        if not speditions:
+            return []
+        if len(speditions) == 1:
+            return speditions
+
+        slot_id = str(slot.get("slot_id") or "").upper()
+        for spedition in speditions:
+            spedition_id = str(spedition.get("spedition_id") or "")
+            if not spedition_id.startswith("SPD-DEMO-"):
+                continue
+            slug = spedition_id.replace("SPD-DEMO-", "").upper()
+            if slug and slug in slot_id:
+                return [spedition]
+
+        demo_speditions = [
+            sp
+            for sp in speditions
+            if str(sp.get("spedition_id") or "").startswith("SPD-DEMO-")
+        ]
+        if demo_speditions:
+            return [demo_speditions[-1]]
+
+        return [speditions[0]]
+
+    def _sort_alerts_for_calling(self, alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Demo spike slots (SLOT-*-DEMO-*) before seed TMS rows with stale phones."""
+        return sorted(
+            alerts,
+            key=lambda item: (
+                0 if "-DEMO-" in str(item.get("slot", {}).get("slot_id") or "") else 1,
+                -int(item.get("predicted_delay_sec") or 0),
+            ),
+        )
 
     def _dedupe_alerts_by_slot(self, alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         best_by_slot: dict[str, dict[str, Any]] = {}

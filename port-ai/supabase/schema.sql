@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS tms_slot_templates (
   at_risk_since TIMESTAMPTZ,
   window_start_at TIMESTAMPTZ,
   window_end_at TIMESTAMPTZ,
+  owner_user_id UUID,
   PRIMARY KEY (provider_id, slot_id)
 );
 

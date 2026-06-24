@@ -193,16 +193,56 @@ export async function deleteCorridor(
 export interface CorridorSpikeDemoResponse {
   ok: boolean
   corridor_id: string
+  phone_e164?: string
+  dry_run?: boolean
   max_predicted_delay_sec?: number
+  slot?: {
+    slot_id?: string
+    phone_e164?: string
+    spedition_id?: string
+  }
   dispatch?: {
     alert_count?: number
-    calls?: Array<{ status?: string; call_sid?: string }>
+    dry_run?: boolean
+    calls?: Array<{
+      status?: string
+      call_sid?: string
+      phone?: string
+      booking_ref?: string
+      slot_id?: string
+      error?: string
+      fingerprint?: string
+    }>
+    alerts?: Array<{
+      slot_id?: string
+      phones?: string[]
+      corridor_name?: string
+    }>
+  }
+}
+
+export async function fetchHealthVoice(): Promise<unknown> {
+  try {
+    const response = await fetch('/health')
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!response.ok || !contentType.includes('application/json')) {
+      return {
+        error: `health_unavailable HTTP ${response.status}`,
+        content_type: contentType,
+      }
+    }
+    const body = (await response.json()) as { voice?: unknown }
+    return body.voice ?? body
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
 export async function triggerCorridorSpikeDemo(
   corridorId: string,
-  payload?: { dry_run?: boolean; force?: boolean },
+  payload?: { dry_run?: boolean; force?: boolean; phone_e164?: string },
 ): Promise<CorridorSpikeDemoResponse> {
   const token = getStoredToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -215,7 +255,8 @@ export async function triggerCorridorSpikeDemo(
     body: JSON.stringify({
       corridor_id: corridorId,
       force: payload?.force ?? true,
-      dry_run: payload?.dry_run ?? true,
+      dry_run: payload?.dry_run ?? false,
+      ...(payload?.phone_e164 ? { phone_e164: payload.phone_e164 } : {}),
     }),
   })
   if (!response.ok) {

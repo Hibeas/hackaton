@@ -8,7 +8,8 @@
     "modeNavigation": "Panel mode",
     "mode": {
       "live": "Live",
-      "forecast": "Forecast"
+      "forecast": "Forecast",
+      "bookings": "Bookings"
     }
   },
   "overview": {
@@ -279,7 +280,62 @@
     "error": "Error",
     "errorNotConfigured": "Missing TWILIO/ELEVENLABS in backend/.env",
     "errorCorridorNotFound": "Corridor not found in backend config",
-    "errorProvider": "ElevenLabs/Twilio error — check backend logs"
+    "errorProvider": "ElevenLabs/Twilio error — check backend logs",
+    "errorNoPhone": "No phone — set VOICE_CALL_DEMO_TO in .env or phone on profile",
+    "errorTwilioTrial": "Twilio trial — number must be verified in Twilio Console (Verified Caller IDs)",
+    "noCall": "Spike OK but no call placed — see debug",
+    "debugTitle": "Spike / Twilio debug (temporary)"
+  },
+  "bookings": {
+    "title": "My gate bookings",
+    "summary": "Gate slots linked to your account.",
+    "atRiskSummary": "{{count}} slot(s) at risk — review before departure.",
+    "empty": "No active bookings for today.",
+    "refresh": "Refresh",
+    "refreshing": "Loading…",
+    "ref": "Booking ref",
+    "port": "Port",
+    "containers": "Containers",
+    "call": "Call",
+    "showOnMap": "Show corridor on map",
+    "rescheduleLabel": "Quick reschedule",
+    "customToggle": "Custom time",
+    "customLabel": "Pick a new slot start",
+    "customApply": "Apply",
+    "cancel": "Cancel",
+    "working": "Saving…",
+    "reschedule": {
+      "30": "+30 min",
+      "60": "+1 h",
+      "120": "+2 h"
+    },
+    "ports": {
+      "gdynia": "Gdynia",
+      "gdansk": "Gdańsk",
+      "szczecin": "Szczecin",
+      "swinoujscie": "Świnoujście"
+    },
+    "status": {
+      "confirmed": "Confirmed",
+      "at_risk": "At risk",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "callStatus": {
+      "initiated": "Alert sent",
+      "answered": "Answered",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "errors": {
+      "bookings_user_missing": "Sign in again to load bookings.",
+      "bookings_fetch_failed": "Could not load bookings.",
+      "booking_not_found": "Booking not found.",
+      "booking_action_failed": "Could not update booking.",
+      "invalid_offset_minutes": "Invalid time shift.",
+      "invalid_reschedule_payload": "Choose a preset shift or a custom date.",
+      "invalid_custom_datetime": "Enter a valid date and time."
+    }
   },
   "language": {
     "label": "Language",

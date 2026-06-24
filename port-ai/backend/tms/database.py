@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS tms_slot_templates (
     at_risk_since TEXT,
     window_start_at TEXT,
     window_end_at TEXT,
+    owner_user_id TEXT,
     PRIMARY KEY (provider_id, slot_id),
     FOREIGN KEY (provider_id) REFERENCES tms_carriers(provider_id)
 )
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS tms_slot_templates (
     at_risk_since TIMESTAMPTZ,
     window_start_at TIMESTAMPTZ,
     window_end_at TIMESTAMPTZ,
+    owner_user_id UUID,
     PRIMARY KEY (provider_id, slot_id)
 )
 """
@@ -274,6 +276,7 @@ class TmsDatabase:
             "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS at_risk_since TIMESTAMPTZ",
             "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS window_start_at TIMESTAMPTZ",
             "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS window_end_at TIMESTAMPTZ",
+            "ALTER TABLE tms_slot_templates ADD COLUMN IF NOT EXISTS owner_user_id UUID",
         ]
         with self._pg_conn.cursor() as cursor:
             for statement in statements:
@@ -286,6 +289,7 @@ class TmsDatabase:
             "at_risk_since": "TEXT",
             "window_start_at": "TEXT",
             "window_end_at": "TEXT",
+            "owner_user_id": "TEXT",
         }
         with self._sqlite_connect() as connection:
             existing = {
@@ -378,6 +382,7 @@ class TmsDatabase:
         window_start_at = template.get("window_start_at")
         window_end_at = template.get("window_end_at")
         at_risk_since = template.get("at_risk_since")
+        owner_user_id = template.get("owner_user_id")
         if self.backend == "postgres":
             with self._pg_conn.cursor() as cursor:
                 cursor.execute(
@@ -386,8 +391,8 @@ class TmsDatabase:
                         provider_id, slot_id, terminal_code, port_id,
                         start_hour, start_minute, duration_minutes,
                         container_count, booking_ref, status, corridor_ids,
-                        window_start_at, window_end_at, at_risk_since, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, NOW())
+                        window_start_at, window_end_at, at_risk_since, owner_user_id, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, NOW())
                     ON CONFLICT (provider_id, slot_id) DO UPDATE SET
                         terminal_code = EXCLUDED.terminal_code,
                         port_id = EXCLUDED.port_id,
@@ -401,6 +406,7 @@ class TmsDatabase:
                         window_start_at = COALESCE(EXCLUDED.window_start_at, tms_slot_templates.window_start_at),
                         window_end_at = COALESCE(EXCLUDED.window_end_at, tms_slot_templates.window_end_at),
                         at_risk_since = COALESCE(EXCLUDED.at_risk_since, tms_slot_templates.at_risk_since),
+                        owner_user_id = COALESCE(EXCLUDED.owner_user_id, tms_slot_templates.owner_user_id),
                         updated_at = NOW()
                     """,
                     (
@@ -418,6 +424,7 @@ class TmsDatabase:
                         window_start_at,
                         window_end_at,
                         at_risk_since,
+                        owner_user_id,
                     ),
                 )
             return
@@ -429,8 +436,8 @@ class TmsDatabase:
                     provider_id, slot_id, terminal_code, port_id,
                     start_hour, start_minute, duration_minutes,
                     container_count, booking_ref, status, corridor_ids,
-                    window_start_at, window_end_at, at_risk_since, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    window_start_at, window_end_at, at_risk_since, owner_user_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(provider_id, slot_id) DO UPDATE SET
                     terminal_code = excluded.terminal_code,
                     port_id = excluded.port_id,
@@ -444,6 +451,7 @@ class TmsDatabase:
                     window_start_at = COALESCE(excluded.window_start_at, window_start_at),
                     window_end_at = COALESCE(excluded.window_end_at, window_end_at),
                     at_risk_since = COALESCE(excluded.at_risk_since, at_risk_since),
+                    owner_user_id = COALESCE(excluded.owner_user_id, owner_user_id),
                     updated_at = datetime('now')
                 """,
                 (
@@ -461,6 +469,7 @@ class TmsDatabase:
                     window_start_at,
                     window_end_at,
                     at_risk_since,
+                    owner_user_id,
                 ),
             )
             connection.commit()
@@ -495,6 +504,184 @@ class TmsDatabase:
                 (since.isoformat(), provider_id, slot_id),
             )
             connection.commit()
+
+    def user_has_placeholder_bookings(self, user_id: str) -> bool:
+        prefix = f"SLOT-PH-{user_id.replace('-', '')[:8]}-"
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1 FROM tms_slot_templates
+                    WHERE owner_user_id = %s AND slot_id LIKE %s
+                    LIMIT 1
+                    """,
+                    (user_id.strip(), f"{prefix}%"),
+                )
+                return cursor.fetchone() is not None
+
+        with self._sqlite_connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM tms_slot_templates
+                WHERE owner_user_id = ? AND slot_id LIKE ?
+                LIMIT 1
+                """,
+                (user_id.strip(), f"{prefix}%"),
+            ).fetchone()
+            return row is not None
+
+    def update_slot_status_for_owner(
+        self,
+        provider_id: str,
+        slot_id: str,
+        user_id: str,
+        status: str,
+    ) -> bool:
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE tms_slot_templates
+                    SET status = %s, updated_at = NOW()
+                    WHERE provider_id = %s AND slot_id = %s AND owner_user_id = %s
+                    """,
+                    (status, provider_id, slot_id, user_id.strip()),
+                )
+                return cursor.rowcount > 0
+
+        with self._sqlite_connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE tms_slot_templates
+                SET status = ?, updated_at = datetime('now')
+                WHERE provider_id = ? AND slot_id = ? AND owner_user_id = ?
+                """,
+                (status, provider_id, slot_id, user_id.strip()),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def shift_slot_window_for_owner(
+        self,
+        provider_id: str,
+        slot_id: str,
+        user_id: str,
+        *,
+        offset_minutes: int,
+    ) -> dict[str, Any] | None:
+        template = self.get_owned_slot_template(provider_id, slot_id, user_id)
+        if template is None:
+            return None
+        if str(template.get("status") or "") == "cancelled":
+            return None
+
+        window_start = self._parse_optional_timestamp(template.get("window_start_at"))
+        window_end = self._parse_optional_timestamp(template.get("window_end_at"))
+        duration = int(template.get("duration_minutes") or 30)
+        if window_start is None or window_end is None:
+            return None
+
+        delta = timedelta(minutes=offset_minutes)
+        new_start = window_start + delta
+        new_end = window_end + delta
+        local_start = new_start.astimezone(ZoneInfo("Europe/Warsaw"))
+
+        updated = {
+            **template,
+            "start_hour": local_start.hour,
+            "start_minute": local_start.minute,
+            "duration_minutes": duration,
+            "window_start_at": new_start.isoformat(),
+            "window_end_at": new_end.isoformat(),
+            "status": template.get("status") or "confirmed",
+            "at_risk_since": template.get("at_risk_since"),
+        }
+        self.upsert_slot_template(provider_id, updated)
+        return updated
+
+    def set_slot_window_for_owner(
+        self,
+        provider_id: str,
+        slot_id: str,
+        user_id: str,
+        *,
+        window_start_at: datetime,
+    ) -> dict[str, Any] | None:
+        template = self.get_owned_slot_template(provider_id, slot_id, user_id)
+        if template is None:
+            return None
+        if str(template.get("status") or "") == "cancelled":
+            return None
+
+        duration = int(template.get("duration_minutes") or 30)
+        start = window_start_at if window_start_at.tzinfo else window_start_at.replace(tzinfo=timezone.utc)
+        local_start = start.astimezone(LOCAL_TZ)
+        new_end = start + timedelta(minutes=duration)
+
+        updated = {
+            **template,
+            "start_hour": local_start.hour,
+            "start_minute": local_start.minute,
+            "duration_minutes": duration,
+            "window_start_at": start.isoformat(),
+            "window_end_at": new_end.isoformat(),
+            "status": template.get("status") or "confirmed",
+            "at_risk_since": template.get("at_risk_since"),
+        }
+        self.upsert_slot_template(provider_id, updated)
+        return updated
+
+    def get_owned_slot_template(
+        self,
+        provider_id: str,
+        slot_id: str,
+        user_id: str,
+    ) -> dict[str, Any] | None:
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        provider_id, slot_id, terminal_code, port_id,
+                        start_hour, start_minute, duration_minutes,
+                        container_count, booking_ref, status, corridor_ids,
+                        created_at, updated_at, at_risk_since,
+                        window_start_at, window_end_at, owner_user_id
+                    FROM tms_slot_templates
+                    WHERE provider_id = %s AND slot_id = %s AND owner_user_id = %s
+                    """,
+                    (provider_id, slot_id, user_id.strip()),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                payload = self._template_row_postgres(row[1:16])
+                payload["provider_id"] = row[0]
+                payload["slot_id"] = row[1]
+                payload["owner_user_id"] = str(row[16]) if row[16] else None
+                return payload
+
+        with self._sqlite_connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    provider_id, slot_id, terminal_code, port_id,
+                    start_hour, start_minute, duration_minutes,
+                    container_count, booking_ref, status, corridor_ids,
+                    created_at, updated_at, at_risk_since,
+                    window_start_at, window_end_at, owner_user_id
+                FROM tms_slot_templates
+                WHERE provider_id = ? AND slot_id = ? AND owner_user_id = ?
+                """,
+                (provider_id, slot_id, user_id.strip()),
+            ).fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            template = self._template_row_sqlite(data)
+            template["provider_id"] = data["provider_id"]
+            template["owner_user_id"] = data.get("owner_user_id")
+            return template
 
     def booking_has_answered_call(self, booking_ref: str) -> bool:
         if self.backend == "postgres":
@@ -726,6 +913,28 @@ class TmsDatabase:
                 "twilio_status": twilio_status,
                 "updated": True,
             }
+
+    def clear_spedition_links_for_slot(self, provider_id: str, slot_id: str) -> None:
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM tms_spedition_slots
+                    WHERE provider_id = %s AND slot_id = %s
+                    """,
+                    (provider_id, slot_id),
+                )
+            return
+
+        with self._sqlite_connect() as connection:
+            connection.execute(
+                """
+                DELETE FROM tms_spedition_slots
+                WHERE provider_id = ? AND slot_id = ?
+                """,
+                (provider_id, slot_id),
+            )
+            connection.commit()
 
     def upsert_spedition(
         self,
@@ -1042,6 +1251,200 @@ class TmsDatabase:
                 (provider_id, spedition_id),
             ).fetchall()
             return [str(row["slot_id"]) for row in rows]
+
+    def fetch_bookings_for_user(self, user_id: str) -> list[dict[str, Any]]:
+        normalized = user_id.strip()
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        t.provider_id, t.slot_id, t.terminal_code, t.port_id,
+                        t.start_hour, t.start_minute, t.duration_minutes,
+                        t.container_count, t.booking_ref, t.status, t.corridor_ids,
+                        t.created_at, t.updated_at, t.at_risk_since,
+                        t.window_start_at, t.window_end_at, t.owner_user_id,
+                        s.spedition_id, s.company_name, s.contact_name, s.phone_e164
+                    FROM tms_slot_templates t
+                    JOIN tms_spedition_slots ss
+                      ON ss.provider_id = t.provider_id AND ss.slot_id = t.slot_id
+                    JOIN tms_speditions s
+                      ON s.provider_id = ss.provider_id AND s.spedition_id = ss.spedition_id
+                    WHERE t.owner_user_id = %s
+                    ORDER BY t.window_start_at NULLS LAST, t.start_hour, t.start_minute, t.slot_id
+                    """,
+                    (normalized,),
+                )
+                return [self._booking_row_postgres(row) for row in cursor.fetchall()]
+
+        with self._sqlite_connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    t.provider_id, t.slot_id, t.terminal_code, t.port_id,
+                    t.start_hour, t.start_minute, t.duration_minutes,
+                    t.container_count, t.booking_ref, t.status, t.corridor_ids,
+                    t.created_at, t.updated_at, t.at_risk_since,
+                    t.window_start_at, t.window_end_at, t.owner_user_id,
+                    s.spedition_id, s.company_name, s.contact_name, s.phone_e164
+                FROM tms_slot_templates t
+                JOIN tms_spedition_slots ss
+                  ON ss.provider_id = t.provider_id AND ss.slot_id = t.slot_id
+                JOIN tms_speditions s
+                  ON s.provider_id = ss.provider_id AND s.spedition_id = ss.spedition_id
+                WHERE t.owner_user_id = ?
+                ORDER BY t.window_start_at, t.start_hour, t.start_minute, t.slot_id
+                """,
+                (normalized,),
+            ).fetchall()
+        return [self._booking_row_sqlite(dict(row)) for row in rows]
+
+    def fetch_bookings_for_phone(self, phone_e164: str) -> list[dict[str, Any]]:
+        normalized = phone_e164.strip()
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        t.provider_id, t.slot_id, t.terminal_code, t.port_id,
+                        t.start_hour, t.start_minute, t.duration_minutes,
+                        t.container_count, t.booking_ref, t.status, t.corridor_ids,
+                        t.created_at, t.updated_at, t.at_risk_since,
+                        t.window_start_at, t.window_end_at, t.owner_user_id,
+                        s.spedition_id, s.company_name, s.contact_name, s.phone_e164
+                    FROM tms_speditions s
+                    JOIN tms_spedition_slots ss
+                      ON ss.provider_id = s.provider_id AND ss.spedition_id = s.spedition_id
+                    JOIN tms_slot_templates t
+                      ON t.provider_id = ss.provider_id AND t.slot_id = ss.slot_id
+                    WHERE s.phone_e164 = %s
+                    ORDER BY t.window_start_at NULLS LAST, t.start_hour, t.start_minute, t.slot_id
+                    """,
+                    (normalized,),
+                )
+                return [self._booking_row_postgres(row) for row in cursor.fetchall()]
+
+        with self._sqlite_connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    t.provider_id, t.slot_id, t.terminal_code, t.port_id,
+                    t.start_hour, t.start_minute, t.duration_minutes,
+                    t.container_count, t.booking_ref, t.status, t.corridor_ids,
+                    t.created_at, t.updated_at, t.at_risk_since,
+                    t.window_start_at, t.window_end_at, t.owner_user_id,
+                    s.spedition_id, s.company_name, s.contact_name, s.phone_e164
+                FROM tms_speditions s
+                JOIN tms_spedition_slots ss
+                  ON ss.provider_id = s.provider_id AND ss.spedition_id = s.spedition_id
+                JOIN tms_slot_templates t
+                  ON t.provider_id = ss.provider_id AND t.slot_id = ss.slot_id
+                WHERE s.phone_e164 = ?
+                ORDER BY t.window_start_at, t.start_hour, t.start_minute, t.slot_id
+                """,
+                (normalized,),
+            ).fetchall()
+        return [self._booking_row_sqlite(dict(row)) for row in rows]
+
+    def fetch_latest_calls_for_bookings(self, booking_refs: list[str]) -> dict[str, dict[str, Any]]:
+        refs = [ref.strip() for ref in booking_refs if ref and ref.strip()]
+        if not refs:
+            return {}
+
+        if self.backend == "postgres":
+            with self._pg_conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT ON (booking_ref)
+                        booking_ref, call_status, call_sid, phone_e164, created_at, answered_at
+                    FROM tms_slot_calls
+                    WHERE booking_ref = ANY(%s)
+                    ORDER BY booking_ref, created_at DESC
+                    """,
+                    (refs,),
+                )
+                return {
+                    str(row[0]): {
+                        "status": row[1],
+                        "call_sid": row[2],
+                        "phone_e164": row[3],
+                        "created_at": row[4].isoformat() if row[4] else None,
+                        "answered_at": row[5].isoformat() if row[5] else None,
+                    }
+                    for row in cursor.fetchall()
+                }
+
+        placeholders = ",".join("?" for _ in refs)
+        with self._sqlite_connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT c.booking_ref, c.call_status, c.call_sid, c.phone_e164, c.created_at, c.answered_at
+                FROM tms_slot_calls c
+                JOIN (
+                    SELECT booking_ref, MAX(created_at) AS max_created_at
+                    FROM tms_slot_calls
+                    WHERE booking_ref IN ({placeholders})
+                    GROUP BY booking_ref
+                ) latest
+                  ON latest.booking_ref = c.booking_ref
+                 AND latest.max_created_at = c.created_at
+                """,
+                refs,
+            ).fetchall()
+
+        return {
+            str(row["booking_ref"]): {
+                "status": row["call_status"],
+                "call_sid": row["call_sid"],
+                "phone_e164": row["phone_e164"],
+                "created_at": row["created_at"],
+                "answered_at": row["answered_at"],
+            }
+            for row in rows
+        }
+
+    def _booking_row_postgres(self, row: tuple[Any, ...]) -> dict[str, Any]:
+        corridor_raw = row[10]
+        if isinstance(corridor_raw, str):
+            corridor_ids = json.loads(corridor_raw)
+        else:
+            corridor_ids = list(corridor_raw or [])
+        return {
+            "provider_id": row[0],
+            "slot_id": row[1],
+            "terminal_code": row[2],
+            "port_id": row[3],
+            "start_hour": row[4],
+            "start_minute": row[5],
+            "duration_minutes": row[6],
+            "container_count": row[7],
+            "booking_ref": row[8],
+            "status": row[9],
+            "corridor_ids": [str(item) for item in corridor_ids],
+            "created_at": row[11].isoformat() if row[11] else None,
+            "updated_at": row[12].isoformat() if row[12] else None,
+            "at_risk_since": row[13].isoformat() if row[13] else None,
+            "window_start_at": row[14].isoformat() if row[14] else None,
+            "window_end_at": row[15].isoformat() if row[15] else None,
+            "owner_user_id": str(row[16]) if row[16] else None,
+            "spedition_id": row[17],
+            "company_name": row[18],
+            "contact_name": row[19],
+            "phone_e164": row[20],
+        }
+
+    def _booking_row_sqlite(self, row: dict[str, Any]) -> dict[str, Any]:
+        template = self._template_row_sqlite(
+            {key: row[key] for key in row if key not in {"spedition_id", "company_name", "contact_name", "phone_e164"}}
+        )
+        return {
+            **template,
+            "provider_id": row.get("provider_id"),
+            "spedition_id": row.get("spedition_id"),
+            "company_name": row.get("company_name"),
+            "contact_name": row.get("contact_name"),
+            "phone_e164": row.get("phone_e164"),
+        }
 
     def materialize_slot(self, provider_id: str, template: dict[str, Any], day: date) -> CanonicalSlot:
         duration = int(template["duration_minutes"])

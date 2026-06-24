@@ -196,6 +196,7 @@ function DashboardView() {
           selectedPortId={selectedPortId}
           selectedCorridorId={selectedCorridorId}
           onCorridorSelect={handleCorridorSelect}
+          onSwitchToLive={() => setDashboardMode('live')}
         />
 
         <div className="map-panel">
