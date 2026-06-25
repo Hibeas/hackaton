@@ -17,7 +17,9 @@ from zoneinfo import ZoneInfo
 from corridor_service import find_corridor_by_id
 from hybrid_delay_forecaster import DEFAULT_HORIZONS, build_corridor_forecasts
 from kafka_prediction_buffer import kafka_prediction_buffer
+from operational_action_service import build_operational_actions
 from slot_dispatch_service import slot_dispatch_service
+from slot_recommendation_service import recommend_slots_for_corridor
 from tms.database import tms_database
 from tms.store import tms_store
 from user_store import user_store
@@ -305,6 +307,40 @@ async def run_corridor_spike_demo(
         only_slot_ids=[slot_info["slot_id"]],
     )
 
+    context = resolve_corridor_context(corridor_id)
+    _port, corridor = find_corridor_by_id(corridor_id)
+    horizon_item = next(
+        (item for item in corridor_forecasts if int(item.get("horizon_minutes") or 0) == 30),
+        corridor_forecasts[0] if corridor_forecasts else None,
+    )
+    horizon_minutes = int((horizon_item or {}).get("horizon_minutes") or 30)
+    predicted = int((horizon_item or {}).get("predicted_delay_sec") or max_predicted)
+
+    slot_recs = recommend_slots_for_corridor(
+        corridor_id,
+        predicted_delay_sec=predicted,
+    )
+    current_slot = {
+        "slot_id": slot_info["slot_id"],
+        "terminal_code": slot_info["terminal_code"],
+        "slot_local": slot_info["slot_local"],
+        "status": "at_risk",
+    }
+    operational_actions = build_operational_actions(
+        corridor_id=corridor_id,
+        corridor_name=context["corridor_name"],
+        port_name=context["port_name"],
+        geofence_type=str(corridor.get("geofence_type") or "APPROACH_CORRIDOR"),
+        impacts_port_access=bool(corridor.get("impacts_port_access", True)),
+        terminals=[str(item) for item in (corridor.get("terminals") or [])],
+        predicted_delay_sec=predicted,
+        current_delay_sec=peak_delay_sec,
+        horizon_minutes=horizon_minutes,
+        slot_recommendations=slot_recs.get("recommendations") or [],
+        current_slot=current_slot,
+        scenario="spike",
+    )
+
     return {
         "ok": True,
         "corridor_id": corridor_id,
@@ -314,6 +350,8 @@ async def run_corridor_spike_demo(
         "spike": spike_info,
         "corridor_forecasts": corridor_forecasts,
         "max_predicted_delay_sec": max_predicted,
+        "slot_recommendations": slot_recs,
+        "operational_actions": operational_actions,
         "dispatch": {
             "alert_count": dispatch.get("alert_count"),
             "calls": dispatch.get("calls"),

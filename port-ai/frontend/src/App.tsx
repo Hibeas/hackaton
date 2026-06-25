@@ -10,6 +10,7 @@ import { MapErrorBoundary } from './components/MapErrorBoundary'
 import { LoginPage } from './components/LoginPage'
 import { useAuth } from './context/AuthContext'
 import { useTrafficDashboard } from './hooks/useTrafficDashboard'
+import { useCorridorMapPulse } from './hooks/useCorridorMapPulse'
 import { filterUiPorts, findPort, resolveFocusGeometry } from './utils/corridorConfigHelpers'
 import {
   buildOperationalReport,
@@ -17,6 +18,7 @@ import {
 } from './utils/operationalReport'
 import { DEFAULT_FORECAST_HORIZON, type DashboardMode } from './constants/forecast'
 import type { CrowdMapOverlayResponse } from './types/traffic'
+import { DispatchAuditDrawer } from './components/DispatchAuditDrawer'
 import './App.css'
 
 type AppView = 'dashboard' | 'editor' | 'login'
@@ -70,6 +72,33 @@ function DashboardView() {
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>('live')
   const [forecastHorizon, setForecastHorizon] = useState(DEFAULT_FORECAST_HORIZON)
   const [crowdOverlay, setCrowdOverlay] = useState<CrowdMapOverlayResponse | null>(null)
+  const [auditDrawerOpen, setAuditDrawerOpen] = useState(false)
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem('port-ai-dash-sidebar-expanded')
+      if (stored !== null) {
+        return stored === '1'
+      }
+    } catch {
+      /* ignore */
+    }
+    return window.innerWidth >= 1280
+  })
+
+  const {
+    activePulses,
+    activePulseByCorridor,
+    pulseNow,
+    pulsePanBbox,
+    announcement: pulseAnnouncement,
+    clearPulsePanBbox,
+  } = useCorridorMapPulse(
+    mapData?.delay_forecasts,
+    engineEvents,
+    corridors,
+    ports,
+    forecastHorizon,
+  )
 
   const mapPrimary = useMemo(() => {
     if (!mapData?.primary) {
@@ -165,6 +194,11 @@ function DashboardView() {
     setCrowdOverlay(null)
   }
 
+  const handleDemoCorridorFocus = (corridorId: string, portId: string) => {
+    setSelectedPortId(portId)
+    setSelectedCorridorId(corridorId)
+  }
+
   return (
     <>
       <AppHeader
@@ -178,41 +212,36 @@ function DashboardView() {
         isLive={!isLoading && !error}
         selectedCorridorId={selectedCorridorId}
         selectedCorridorName={selectedCorridorName}
-        onSpikeDemoComplete={() => {
+        onDemoComplete={() => {
           void refresh()
         }}
-        crowdOverlay={crowdOverlay}
+        onCorridorFocus={handleDemoCorridorFocus}
         onCrowdOverlayChange={setCrowdOverlay}
       />
 
       <main className="app-main">
-        <DashboardSidebar
-          engineEvents={engineEvents}
-          corridors={corridors}
-          bottlenecks={bottlenecks}
-          delayForecasts={mapData?.delay_forecasts}
-          dashboardMode={dashboardMode}
-          forecastHorizon={forecastHorizon}
-          selectedPortId={selectedPortId}
-          selectedCorridorId={selectedCorridorId}
-          onCorridorSelect={handleCorridorSelect}
-          onSwitchToLive={() => setDashboardMode('live')}
-        />
-
-        <div className="map-panel">
+        <div
+          className={`map-panel${sidebarExpanded ? '' : ' map-panel--sidebar-collapsed'}`}
+        >
           {mapPrimary ? (
             <MapErrorBoundary fallback={<div className="map-placeholder">{t('map.renderError')}</div>}>
               <TrafficMap
                 primary={mapPrimary}
-                context={mapData.context}
+                context={mapData?.context ?? { source: 'ztm', events: [] }}
                 heatmapPoints={mapHeatmapPoints}
                 flowTileUrl={mapFlowTileUrl}
                 crowdDemoActive={crowdOverlay !== null}
-                terminals={mapData.port_operations?.terminals_catalog ?? []}
+                terminals={mapData?.port_operations?.terminals_catalog ?? []}
                 focusBbox={focusGeometry.bbox}
                 focusPolygon={focusGeometry.polygon}
                 selectedPort={selectedPort}
                 selectedCorridorId={selectedCorridorId}
+                activePulseByCorridor={activePulseByCorridor}
+                pulseNow={pulseNow}
+                activeForecastPulses={activePulses}
+                layoutKey={sidebarExpanded}
+                pulsePanBbox={pulsePanBbox}
+                onPulsePanComplete={clearPulsePanBbox}
                 corridorReport={corridorReport}
                 reportPopupPosition={reportPopupPosition}
                 onCorridorSelect={handleCorridorSelect}
@@ -227,6 +256,23 @@ function DashboardView() {
             </div>
           )}
         </div>
+
+        <DashboardSidebar
+          ports={ports}
+          engineEvents={engineEvents}
+          corridors={corridors}
+          bottlenecks={bottlenecks}
+          delayForecasts={mapData?.delay_forecasts}
+          dashboardMode={dashboardMode}
+          forecastHorizon={forecastHorizon}
+          selectedPortId={selectedPortId}
+          selectedCorridorId={selectedCorridorId}
+          selectedCorridorName={selectedCorridorName}
+          onPortSelect={handlePortSelect}
+          onCorridorSelect={handleCorridorSelect}
+          onSwitchToLive={() => setDashboardMode('live')}
+          onExpandedChange={setSidebarExpanded}
+        />
       </main>
 
       <StatusBar
@@ -240,7 +286,11 @@ function DashboardView() {
         error={error}
         crowdDemoActive={crowdOverlay !== null}
         crowdCorridorName={crowdOverlay?.corridor_name ?? null}
+        pulseAnnouncement={pulseAnnouncement}
+        onOpenAudit={() => setAuditDrawerOpen(true)}
       />
+
+      <DispatchAuditDrawer open={auditDrawerOpen} onClose={() => setAuditDrawerOpen(false)} />
     </>
   )
 }

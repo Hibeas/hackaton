@@ -25,6 +25,7 @@ export interface CorridorMetrics {
   avg_intensity_vph: number | null
   demand_ratio: number | null
   top_incident_causes: string[]
+  primary_incident_category?: number | null
 }
 
 export interface CorridorSnapshot {

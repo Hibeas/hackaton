@@ -209,6 +209,10 @@ class KafkaPredictionBuffer:
             "messages_ingested": self.messages_ingested,
         }
 
+    def clear_corridor(self, corridor_id: str) -> None:
+        """Remove buffered samples for a corridor (demo decay phase)."""
+        self._samples.pop(corridor_id, None)
+
 
 kafka_prediction_buffer = KafkaPredictionBuffer()
 

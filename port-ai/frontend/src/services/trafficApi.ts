@@ -11,6 +11,7 @@ import type {
   EngineEventsResponse,
 } from '../types/engine'
 import type { CorridorConfigResponse } from '../types/corridorConfig'
+import type { SlotRecommendation, SlotRecommendationsResponse } from '../types/tms'
 import type { CorridorBbox, LatLng } from '../constants/ports'
 
 async function readApiError(response: Response): Promise<string> {
@@ -190,12 +191,29 @@ export async function deleteCorridor(
   return response.json() as Promise<{ ok: boolean; corridor_id: string }>
 }
 
+export interface OperationalActions {
+  scenario: string
+  operational_importance: string
+  driver: string[]
+  dispatcher: string[]
+  voice_summary?: string
+  slot_recommendations?: SlotRecommendation[]
+}
+
 export interface CorridorSpikeDemoResponse {
   ok: boolean
   corridor_id: string
+  corridor_name?: string
   phone_e164?: string
   dry_run?: boolean
   max_predicted_delay_sec?: number
+  operational_actions?: OperationalActions
+  slot_recommendations?: SlotRecommendationsResponse
+  voice?: {
+    enabled?: boolean
+    skipped?: boolean
+    reason?: string | null
+  }
   slot?: {
     slot_id?: string
     phone_e164?: string
@@ -219,6 +237,263 @@ export interface CorridorSpikeDemoResponse {
       corridor_name?: string
     }>
   }
+}
+
+export interface CrowdScenarioResponse {
+  ok: boolean
+  corridor_id: string
+  corridor_name?: string
+  map_overlay: CrowdMapOverlayResponse
+  operational_actions: OperationalActions
+  slot_recommendations?: SlotRecommendationsResponse
+  corridor_forecasts?: Array<Record<string, unknown>>
+  at_risk_slot?: Record<string, unknown> | null
+  max_predicted_delay_sec?: number
+}
+
+export interface CorridorIncidentResponse {
+  ok: boolean
+  corridor_id: string
+  corridor_name?: string
+  port_id?: string
+  enable_voice?: boolean
+  map_overlay: CrowdMapOverlayResponse
+  operational_actions: OperationalActions
+  slot_recommendations?: SlotRecommendationsResponse
+  corridor_forecasts?: Array<Record<string, unknown>>
+  at_risk_slot?: Record<string, unknown> | null
+  max_predicted_delay_sec?: number
+  voice?: {
+    requested?: boolean
+    enabled?: boolean
+    skipped?: boolean
+    reason?: string | null
+  }
+  dispatch?: CorridorSpikeDemoResponse['dispatch']
+}
+
+export async function triggerCorridorIncident(
+  corridorId: string,
+  payload?: { enable_voice?: boolean; peak_delay_sec?: number; mark_slots_at_risk?: boolean },
+): Promise<CorridorIncidentResponse> {
+  const token = getStoredToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  const response = await fetch('/api/v1/demo/corridor-incident', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      corridor_id: corridorId,
+      enable_voice: payload?.enable_voice ?? false,
+      peak_delay_sec: payload?.peak_delay_sec ?? 960,
+      mark_slots_at_risk: payload?.mark_slots_at_risk ?? true,
+    }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<CorridorIncidentResponse>
+}
+
+export interface DemoReportSection {
+  title: string
+  body?: string
+  items?: string[]
+}
+
+export interface DemoReport {
+  report_id: string
+  is_test: boolean
+  generated_at: string
+  headline: string
+  corridor_id: string
+  corridor_name: string
+  port_name: string
+  summary: string
+  sections: DemoReportSection[]
+  operational_importance?: string
+  predicted_delay_sec?: number
+  slot_recommendation_count?: number
+  validation_passed?: boolean
+}
+
+export interface PredictionCheck {
+  id: string
+  label: string
+  ok: boolean
+  detail: string
+}
+
+export interface PredictionValidation {
+  passed: boolean
+  checks: PredictionCheck[]
+  forecast_count: number
+  peak_injected_delay_sec: number
+  max_predicted_delay_sec: number
+  predicted_at_horizon_30_sec: number
+  operational_importance: string
+  pulse_eligible: boolean
+  horizons: Array<{
+    horizon_minutes: number
+    predicted_delay_sec: number
+    method: string
+    confidence: string
+  }>
+}
+
+export interface PredictionStressResponse {
+  ok: boolean
+  corridor_id: string
+  corridor_name?: string
+  port_id?: string
+  port_name?: string
+  incident_cause?: string
+  map_overlay: CrowdMapOverlayResponse
+  operational_actions: OperationalActions
+  slot_recommendations?: SlotRecommendationsResponse
+  demo_report: DemoReport
+  prediction_validation: PredictionValidation
+  corridor_forecasts?: Array<Record<string, unknown>>
+  at_risk_slot?: Record<string, unknown> | null
+  max_predicted_delay_sec?: number
+}
+
+export interface MethodComparisonRow {
+  horizon_minutes: number
+  kafka_trend_sec: number | null
+  ml_historical_sec: number | null
+  kafka_available?: boolean
+  ml_available?: boolean
+  divergence_pct: number | null
+  diverged: boolean
+  divergence_expected?: boolean
+}
+
+export interface MethodComparison {
+  passed: boolean
+  checks: PredictionCheck[]
+  comparisons: MethodComparisonRow[]
+  divergence_threshold_pct: number
+  diverged_horizons: number[]
+  kafka_at_horizon_30_sec: number
+}
+
+export interface DecayPhase {
+  operational_importance: string
+  pulse_eligible: boolean
+  predicted_at_horizon_30_sec: number
+  max_predicted_delay_sec: number
+  current_delay_sec: number
+}
+
+export interface DecayValidation {
+  passed: boolean
+  checks: PredictionCheck[]
+  phase_spike: DecayPhase
+  phase_recovery: DecayPhase
+  pulse_min_delay_sec: number
+}
+
+export interface MlKafkaCompareResponse {
+  ok: boolean
+  corridor_id: string
+  corridor_name?: string
+  port_id?: string
+  port_name?: string
+  map_overlay: CrowdMapOverlayResponse
+  operational_actions: OperationalActions
+  slot_recommendations?: SlotRecommendationsResponse
+  method_comparison: MethodComparison
+  prediction_validation: PredictionValidation
+}
+
+export interface DecayRecoveryResponse {
+  ok: boolean
+  corridor_id: string
+  corridor_name?: string
+  port_id?: string
+  port_name?: string
+  map_overlay: CrowdMapOverlayResponse
+  operational_actions: OperationalActions
+  slot_recommendations?: SlotRecommendationsResponse
+  decay_validation: DecayValidation
+  demo_report: DemoReport
+  prediction_validation: PredictionValidation
+}
+
+export async function triggerMlKafkaCompare(
+  payload?: { port_id?: string; corridor_id?: string; peak_delay_sec?: number },
+): Promise<MlKafkaCompareResponse> {
+  const token = getStoredToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  const response = await fetch('/api/v1/demo/ml-kafka-compare', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      ...(payload?.port_id ? { port_id: payload.port_id } : {}),
+      ...(payload?.corridor_id ? { corridor_id: payload.corridor_id } : {}),
+      peak_delay_sec: payload?.peak_delay_sec ?? 960,
+    }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<MlKafkaCompareResponse>
+}
+
+export async function triggerDecayRecovery(
+  payload?: { port_id?: string; corridor_id?: string; peak_delay_sec?: number },
+): Promise<DecayRecoveryResponse> {
+  const token = getStoredToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  const response = await fetch('/api/v1/demo/decay-recovery', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      ...(payload?.port_id ? { port_id: payload.port_id } : {}),
+      ...(payload?.corridor_id ? { corridor_id: payload.corridor_id } : {}),
+      peak_delay_sec: payload?.peak_delay_sec ?? 960,
+    }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<DecayRecoveryResponse>
+}
+
+export async function triggerPredictionStress(
+  payload?: { port_id?: string; peak_delay_sec?: number; mark_slots_at_risk?: boolean },
+): Promise<PredictionStressResponse> {
+  const token = getStoredToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  const response = await fetch('/api/v1/demo/prediction-stress', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      ...(payload?.port_id ? { port_id: payload.port_id } : {}),
+      peak_delay_sec: payload?.peak_delay_sec ?? 1800,
+      mark_slots_at_risk: payload?.mark_slots_at_risk ?? true,
+    }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<PredictionStressResponse>
 }
 
 export async function fetchHealthVoice(): Promise<unknown> {

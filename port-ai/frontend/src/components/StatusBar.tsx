@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { MapPulseAnnouncement } from '../hooks/useCorridorMapPulse'
 
 interface StatusBarProps {
   primaryCount: number
@@ -12,6 +13,8 @@ interface StatusBarProps {
   error: string | null
   crowdDemoActive?: boolean
   crowdCorridorName?: string | null
+  pulseAnnouncement?: MapPulseAnnouncement | null
+  onOpenAudit?: () => void
 }
 
 export function StatusBar({
@@ -25,6 +28,8 @@ export function StatusBar({
   error,
   crowdDemoActive = false,
   crowdCorridorName = null,
+  pulseAnnouncement = null,
+  onOpenAudit,
 }: StatusBarProps) {
   const { t } = useTranslation()
   const [nextRefreshSeconds, setNextRefreshSeconds] = useState(0)
@@ -55,6 +60,13 @@ export function StatusBar({
 
   return (
     <footer className="status-bar">
+      <span className="status-bar__sr" aria-live="polite" aria-atomic="true">
+        {pulseAnnouncement
+          ? t(`map.pulse.${pulseAnnouncement.kind}`, {
+              corridor: pulseAnnouncement.corridorName,
+            })
+          : ''}
+      </span>
       <span className={`status-bar__item${isLoading ? ' status-bar__item--pulse' : ''}`}>
         {crowdDemoActive
           ? t('status.crowdDemo', { corridor: crowdCorridorName ?? '—' })
@@ -81,6 +93,11 @@ export function StatusBar({
         </>
       ) : null}
       <span className="status-bar__spacer" />
+      {onOpenAudit ? (
+        <button type="button" className="status-bar__audit-btn" onClick={onOpenAudit}>
+          {t('dispatchAudit.openButton')}
+        </button>
+      ) : null}
       <span className="status-bar__item status-bar__item--muted">
         {t('status.nextRefresh')}: {t('status.seconds', { count: nextRefreshSeconds })}
       </span>

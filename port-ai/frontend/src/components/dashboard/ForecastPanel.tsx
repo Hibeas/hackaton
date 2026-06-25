@@ -3,12 +3,15 @@ import { useTranslation } from 'react-i18next'
 import type { CorridorSnapshot, DelayForecastItem, DelayForecastResponse } from '../../types/engine'
 import { isMlOnlyHorizon } from '../../constants/forecast'
 import { formatDateTime, formatDuration } from '../../utils/trafficFormat'
+import { CorridorSlotSuggestion } from './CorridorSlotSuggestion'
+import { MetricLabel } from '../MetricHint'
 
 interface ForecastPanelProps {
   corridors: CorridorSnapshot[]
   delayForecasts: DelayForecastResponse | null | undefined
   forecastHorizon: number
   selectedCorridorId: string | null
+  selectedCorridorName: string | null
   onCorridorSelect: (corridorId: string) => void
 }
 
@@ -25,6 +28,7 @@ export function ForecastPanel({
   delayForecasts,
   forecastHorizon,
   selectedCorridorId,
+  selectedCorridorName,
   onCorridorSelect,
 }: ForecastPanelProps) {
   const { t, i18n } = useTranslation()
@@ -50,6 +54,15 @@ export function ForecastPanel({
   const withForecastCount = sortedCorridors.filter((item) =>
     forecastByCorridor.has(item.corridor_id),
   ).length
+
+  const selectedForecastDelay = selectedCorridorId
+    ? (forecastByCorridor.get(selectedCorridorId)?.predicted_delay_sec ?? null)
+    : null
+
+  const selectedSnapshot = useMemo(
+    () => corridors.find((item) => item.corridor_id === selectedCorridorId) ?? null,
+    [corridors, selectedCorridorId],
+  )
 
   return (
     <div className="dash-panel">
@@ -112,7 +125,9 @@ export function ForecastPanel({
 
                     <div className="forecast-card__metrics">
                       <span className="forecast-card__metric">
-                        <span className="forecast-card__label">{t('engine.forecast.now')}</span>
+                        <span className="forecast-card__label">
+                          <MetricLabel metric="totalDelay">{t('engine.forecast.now')}</MetricLabel>
+                        </span>
                         <strong>{formatDuration(currentDelay)}</strong>
                       </span>
                       <span className="forecast-card__arrow" aria-hidden>
@@ -120,11 +135,13 @@ export function ForecastPanel({
                       </span>
                       <span className="forecast-card__metric forecast-card__metric--predicted">
                         <span className="forecast-card__label">
-                          {forecastHorizon === 120
-                            ? t('engine.forecast.horizon2h')
-                            : forecastHorizon === 180
-                              ? t('engine.forecast.horizon3h')
-                              : t('engine.forecast.inMinutes', { count: forecastHorizon })}
+                          <MetricLabel metric="forecast">
+                            {forecastHorizon === 120
+                              ? t('engine.forecast.horizon2h')
+                              : forecastHorizon === 180
+                                ? t('engine.forecast.horizon3h')
+                                : t('engine.forecast.inMinutes', { count: forecastHorizon })}
+                          </MetricLabel>
                         </span>
                         <strong>
                           {forecast
@@ -154,6 +171,14 @@ export function ForecastPanel({
             })
           )}
         </div>
+
+        <CorridorSlotSuggestion
+          corridorId={selectedCorridorId}
+          corridorName={selectedCorridorName}
+          predictedDelaySec={selectedForecastDelay}
+          liveDelaySec={selectedSnapshot?.metrics.total_delay_sec ?? 0}
+          hasActiveAlert={(selectedForecastDelay ?? 0) >= 480}
+        />
       </section>
 
       {delayForecasts ? (

@@ -1,5 +1,9 @@
 import { getStoredToken } from './authStorage'
-import type { MyBookingsResponse } from '../types/tms'
+import type {
+  DispatchAuditResponse,
+  MyBookingsResponse,
+  SlotRecommendationsResponse,
+} from '../types/tms'
 
 async function readApiError(response: Response): Promise<string> {
   const body = (await response.json().catch(() => null)) as { detail?: string } | null
@@ -61,4 +65,29 @@ export async function rescheduleMyBooking(
     throw new Error(await readApiError(response))
   }
   return response.json() as Promise<{ ok: boolean; window_local?: string }>
+}
+
+export async function fetchSlotRecommendations(
+  corridorId: string,
+  predictedDelaySec: number,
+  limit = 3,
+): Promise<SlotRecommendationsResponse> {
+  const params = new URLSearchParams({
+    corridor_id: corridorId,
+    predicted_delay_sec: String(predictedDelaySec),
+    limit: String(limit),
+  })
+  const response = await fetch(`/api/v1/tms/recommend-slots?${params}`)
+  if (!response.ok) {
+    throw new Error(await readApiError(response))
+  }
+  return response.json() as Promise<SlotRecommendationsResponse>
+}
+
+export async function fetchDispatchAudit(limit = 40): Promise<DispatchAuditResponse> {
+  const response = await fetch(`/api/v1/tms/dispatch/audit?limit=${limit}`)
+  if (!response.ok) {
+    throw new Error(await readApiError(response))
+  }
+  return response.json() as Promise<DispatchAuditResponse>
 }

@@ -13,6 +13,9 @@
     }
   },
   "overview": {
+    "panelTitle": "Panel",
+    "expandPanel": "Expand operations panel",
+    "collapsePanel": "Collapse operations panel",
     "allClear": "All clear",
     "allClearHint": "No active anomalies for the selected port.",
     "activeAlerts": "{{count}} active alerts — needs attention",
@@ -22,6 +25,24 @@
     "kpiRoads": "TIR roads",
     "noRoadData": "No data",
     "corridorHint": "Click a corridor to expand details and highlight it on the map."
+  },
+  "metricsHelp": {
+    "totalDelay": {
+      "title": "Total delay",
+      "body": "Combined delay across all monitored segments of the corridor in the current TomTom/ZTM snapshot. Shows the overall scale of the problem along the access route."
+    },
+    "maxDelay": {
+      "title": "Max delay",
+      "body": "Largest delay on a single corridor segment — highlights the worst bottleneck point even when the average is lower."
+    },
+    "forecast": {
+      "title": "Forecast",
+      "body": "Estimated delay at the selected horizon (e.g. 60 min), from observation trends, the Kafka buffer, or the ML model. Helps judge whether conditions will worsen."
+    },
+    "stress60min": {
+      "title": "60 min stress",
+      "body": "Bottleneck score from the last hour: how far traffic deviates from normal (delays, speed). Higher values mean greater congestion risk at the gate."
+    }
   },
   "corridor": {
     "anomalySection": "Detected anomaly",
@@ -221,6 +242,47 @@
     "terminalsLayer": "Terminals ({{count}})",
     "tirZonesLayer": "TIR zones ({{count}})",
     "renderError": "Map failed to render — refresh the page",
+    "pulse": {
+      "proactive": "Forecast: watch corridor {{corridor}}",
+      "validated": "Forecast confirmed — alert on corridor {{corridor}}",
+      "severity": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "critical": "Critical"
+      },
+      "importance": {
+        "monitor": "Monitor",
+        "caution": "Watch",
+        "action": "Action",
+        "critical": "Critical"
+      },
+      "popup": {
+        "predictedTag": "Forecast",
+        "validatedTag": "Confirmed",
+        "inHorizon": "in {{count}} min",
+        "now": "now {{delay}}",
+        "whyUnknown": "Cause unknown",
+        "noTerminal": "no terminal",
+        "operationalLine": "{{access}} ({{terminals}}) · in {{horizon}} min · now {{current}}",
+        "confidenceChip": {
+          "high": "High",
+          "medium": "Medium",
+          "low": "Low"
+        }
+      },
+      "cause": {
+        "accident": "Accident",
+        "congestion": "Queue",
+        "roadworks": "Roadworks",
+        "weather": "Weather",
+        "unknown": "Unknown"
+      },
+      "legend": {
+        "proactive": "Forecast",
+        "validated": "Confirmed"
+      }
+    },
     "report": {
       "what": "What is happening",
       "why": "Likely cause",
@@ -237,7 +299,56 @@
       "recommendForecastHigh": "Forecast shows high delay ({{delay}}) — consider delaying departures and checking gate slots.",
       "forecastLine": "Forecast in {{horizon}} min: about {{delay}}.",
       "bottleneckLine": "Bottleneck rank (60 min): #{{rank}}, stress {{stress}}.",
-      "forecastShort": "+{{horizon}} min: ~{{delay}} s"
+      "forecastShort": "+{{horizon}} min: ~{{delay}} s",
+      "copy": "Copy report",
+      "copied": "Copied",
+      "copyError": "Copy failed",
+      "download": "Download .txt"
+    }
+  },
+  "portCompare": {
+    "title": "Port comparison",
+    "leader": "Highest traffic stress: {{port}}",
+    "maxDelay": "Max delay",
+    "forecast": "Forecast",
+    "stress": "60 min stress"
+  },
+  "slotRecommend": {
+    "title": "Recommended gate slots",
+    "suggestionTitle": "Access slot suggestions",
+    "suggestionIntro": "Corridor {{corridor}} — gate window ideas only when traffic is elevated or in an extraordinary situation.",
+    "extraordinaryTag": "Elevated situation",
+    "suggestionIdle": "At current traffic levels we do not suggest changing your gate window.",
+    "selectCorridor": "Select a corridor to see slot suggestions.",
+    "loading": "Finding available windows…",
+    "error": "Could not load slot recommendations.",
+    "empty": "No later slots today for this corridor.",
+    "slack": "+{{minutes}} min slack",
+    "apply": "Use",
+    "reason": {
+      "comfortable": "Comfortable time buffer",
+      "tight": "Tight but feasible",
+      "at_risk": "Slot marked at_risk"
+    }
+  },
+  "dispatchAudit": {
+    "title": "Dispatch audit log",
+    "openButton": "Dispatch log",
+    "subtitle": "Read-only: history of automatic alert plans and calls to carriers. Does not affect live operations.",
+    "close": "Close",
+    "hint": "History of dispatch plans and voice calls (recent events).",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "error": "Could not load audit log.",
+    "empty": "No dispatch events yet — run a spike or auto-dispatch.",
+    "events": {
+      "plan_generated": "Alert plan generated",
+      "dispatch_dry_run": "Dispatch dry-run",
+      "dispatch_started": "Dispatch started",
+      "dispatch_finished": "Dispatch finished",
+      "call_placed": "Call placed",
+      "call_skipped": "Call skipped",
+      "call_failed": "Call failed"
     }
   },
   "portOps": {
@@ -269,6 +380,85 @@
     "selectCorridor": "Select corridor",
     "selectCorridorHint": "Click a corridor in the sidebar to show synthetic crowd",
     "buttonHint": "Demo heatmap + incidents on {{corridor}} (120→960 s delay ramp)"
+  },
+  "demoAction": {
+    "panel": "Corridor demo",
+    "panelHint": "Incident or prediction test on {{corridor}}",
+    "menuHint": "Choose demo scenario",
+    "selectCorridor": "Select corridor",
+    "selectCorridorHint": "Click a corridor in the sidebar to run an incident",
+    "openMenuHint": "Open demo menu — prediction test needs no corridor selection",
+    "runningIncident": "Incident…",
+    "runningIncidentVoice": "Incident + voice…",
+    "runningStress": "Prediction test…",
+    "incident": "Corridor incident",
+    "incidentDesc": "Kafka, forecasts, slots, map — no call",
+    "incidentVoice": "Incident + voice alert",
+    "incidentVoiceDesc": "Same scenario + optional spedition dispatch",
+    "incidentOk": "Incident injected into pipeline",
+    "incidentBadge": "Incident (backtest)",
+    "incidentVoiceBadge": "Incident + voice",
+    "stress": "Prediction test",
+    "stressDesc": "Random port + extreme jam (30 min) — forecast validation",
+    "stressOk": "Forecasts OK — check map and sidebar",
+    "stressPartial": "Test done — some thresholds not met",
+    "stressTitle": "Forecast validation",
+    "stressValidationTitle": "Prediction engine checks",
+    "stressValidationSummary": "Injected ~{{peak}} min, max forecast ~{{max}} min, importance: {{importance}}",
+    "stressPassed": "Forecasts OK",
+    "stressFailed": "Needs attention",
+    "mlKafka": "ML vs Kafka",
+    "mlKafkaDesc": "Compare kafka_trend and ml_historical after spike",
+    "mlKafkaTitle": "Method comparison",
+    "mlKafkaTableTitle": "kafka_trend vs ml_historical",
+    "mlKafkaSummary": "Expected divergence >{{threshold}}% after spike — horizons: {{diverged}}",
+    "mlKafkaExplain": "kafka_trend reacts to the injected jam. ml_historical is a baseline (hour/day/location) — it does not see the live spike. A low ML value is not an error.",
+    "mlKafkaPassed": "Divergence detected — OK",
+    "mlKafkaFailed": "Test failed",
+    "mlKafkaValidationTitle": "ML + Kafka fusion checks",
+    "mlKafkaOk": "Fusion OK — Kafka reacted, ML on baseline",
+    "mlKafkaPartial": "Test done — some thresholds not met",
+    "delaySeconds": "{{sec}} s",
+    "delayMinutes": "{{min}} min",
+    "delayUnavailable": "n/a",
+    "divergenceExpected": "expected",
+    "divergenceExpectedHint": "Post-spike divergence is intentional — ML has no live data",
+    "divergenceUnexpectedHint": "Unexpected divergence — check configuration",
+    "runningMlKafka": "ML vs Kafka…",
+    "decay": "Decay test",
+    "decayDesc": "Spike → low-delay plateau — importance and pulse drop",
+    "decayTitle": "Jam decay",
+    "decayPhasesTitle": "Scenario phases",
+    "decayPhaseSpike": "After spike",
+    "decayPhaseRecovery": "After recovery",
+    "decayImportance": "Importance",
+    "decayPulse": "Map pulse",
+    "decayOk": "Decay OK — importance and pulse dropped",
+    "decayPartial": "Decay test — some thresholds not met",
+    "decayPassedBadge": "Decay OK",
+    "decayFailedBadge": "Decay — attention",
+    "decayValidationTitle": "Jam decay checks",
+    "runningDecay": "Decay test…",
+    "horizonCol": "Horizon",
+    "divergenceCol": "Divergence",
+    "yes": "yes",
+    "no": "no",
+    "needsCorridor": "Select a corridor in the sidebar",
+    "title": "Action plan",
+    "reportTitle": "Test report",
+    "driver": "Driver",
+    "dispatcher": "Dispatcher",
+    "altSlots": "Alternative slots",
+    "minSlack": "min slack",
+    "voiceStatus": "Call status",
+    "technicalDetails": "Technical details",
+    "backtestBadge": "Backtest — affects forecasts and slots",
+    "spikeBadge": "Spike (voice optional)",
+    "spikeNoVoice": "Spike OK — no voice call",
+    "spikeVoiceSkipped": "Voice skipped — missing VOICE_CALL_DEMO_TO or Twilio/ElevenLabs in .env",
+    "errorHint": "Check backend logs and demo configuration",
+    "errorEndpointMissing": "Demo endpoint missing on backend — restart uvicorn after pulling latest code",
+    "errorNoApproachCorridors": "No approach corridors configured for this port"
   },
   "spikeDemo": {
     "button": "Test spike",

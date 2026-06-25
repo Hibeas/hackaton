@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from tms.canonical import CanonicalSlot, CanonicalSpedition
 from tms.database import tms_database
 from tms.store import TmsStore, tms_store
+from slot_recommendation_service import recommend_slots_for_corridor
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,21 @@ class SlotDispatchService:
         self.store = store or tms_store
         self._call_cooldowns: dict[str, datetime] = {}
         self._history: list[dict[str, Any]] = []
+        self._audit: list[dict[str, Any]] = []
+
+    def audit_event(self, event: str, **details: Any) -> None:
+        entry = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "event": event,
+            **details,
+        }
+        self._audit.append(entry)
+        if len(self._audit) > 500:
+            self._audit = self._audit[-500:]
+
+    def recent_audit(self, limit: int = 50) -> list[dict[str, Any]]:
+        capped = max(1, min(limit, 200))
+        return list(reversed(self._audit[-capped:]))
 
     def build_dispatch_plan(
         self,
@@ -80,6 +96,12 @@ class SlotDispatchService:
             speditions = self.store.speditions_for_slots(slot_ids)
             spedition_by_slot = self._index_speditions(speditions)
 
+            rec_bundle = recommend_slots_for_corridor(
+                corridor_id,
+                predicted_delay_sec=int(forecast.get("predicted_delay_sec") or 0),
+            )
+            recommendations = rec_bundle.get("recommendations") or []
+
             for slot in matching_slots:
                 provider_id = str(slot.get("provider_id") or "mock_msc")
                 tms_database.mark_slot_at_risk(provider_id, slot["slot_id"], at_risk_since=now)
@@ -87,11 +109,16 @@ class SlotDispatchService:
 
                 assigned = spedition_by_slot.get(slot["slot_id"], [])
                 primary = self._pick_primary_spedition(assigned, slot)
+                alt = next(
+                    (item for item in recommendations if str(item.get("slot_id") or "") != slot["slot_id"]),
+                    None,
+                )
                 message = self._build_alert_message(
                     slot=slot,
                     forecast=forecast,
                     terminal_labels=terminal_labels,
                     speditions=primary,
+                    alt_recommendation=alt,
                 )
                 alerts.append(
                     {
@@ -111,7 +138,7 @@ class SlotDispatchService:
 
         alerts = self._dedupe_alerts_by_slot(alerts)
         alerts.sort(key=lambda item: item["predicted_delay_sec"], reverse=True)
-        return {
+        plan = {
             "generated_at": now.isoformat(),
             "day": day.isoformat(),
             "threshold_delay_sec": SLOT_DISPATCH_MIN_DELAY_SEC,
@@ -121,6 +148,13 @@ class SlotDispatchService:
             "alerts": alerts,
             "providers": self.store.list_providers(),
         }
+        if alerts:
+            self.audit_event(
+                "plan_generated",
+                alert_count=len(alerts),
+                corridors=[alert.get("corridor_id") for alert in alerts[:5]],
+            )
+        return plan
 
     async def run_auto_dispatch(
         self,
@@ -141,6 +175,10 @@ class SlotDispatchService:
             plan["auto_enabled"] = SLOT_DISPATCH_AUTO_ENABLED
             plan["dry_run"] = True
             plan["calls"] = []
+            self.audit_event(
+                "dispatch_dry_run",
+                alert_count=plan.get("alert_count", 0),
+            )
             return plan
 
         if voice_call_fn is None:
@@ -152,6 +190,12 @@ class SlotDispatchService:
         calls: list[dict[str, Any]] = []
         phones_called_this_run: set[str] = set()
 
+        self.audit_event(
+            "dispatch_started",
+            alert_count=plan.get("alert_count", 0),
+            dry_run=False,
+        )
+
         alerts = self._sort_alerts_for_calling(plan.get("alerts") or [])
 
         for alert in alerts:
@@ -162,6 +206,12 @@ class SlotDispatchService:
                         "status": "skipped_not_at_risk",
                         "slot_id": slot.get("slot_id"),
                     }
+                )
+                self.audit_event(
+                    "call_skipped",
+                    reason="not_at_risk",
+                    slot_id=slot.get("slot_id"),
+                    corridor_id=alert.get("corridor_id"),
                 )
                 continue
 
@@ -255,6 +305,15 @@ class SlotDispatchService:
                 }
                 calls.append(entry)
                 self._history.append({**entry, "at": now.isoformat(), "message": message})
+                self.audit_event(
+                    "call_placed",
+                    slot_id=slot.get("slot_id"),
+                    booking_ref=booking_ref,
+                    corridor_id=alert.get("corridor_id"),
+                    phone=phone,
+                    spedition_id=spedition.get("spedition_id"),
+                    call_sid=result.get("call_sid"),
+                )
                 logger.info(
                     "Slot dispatch call %s -> %s (%s, booking=%s)",
                     spedition["spedition_id"],
@@ -291,9 +350,22 @@ class SlotDispatchService:
                         "error": str(exc),
                     }
                 )
+                self.audit_event(
+                    "call_failed",
+                    slot_id=slot.get("slot_id"),
+                    booking_ref=booking_ref,
+                    corridor_id=alert.get("corridor_id"),
+                    phone=phone,
+                    error=str(exc),
+                )
 
         plan["auto_enabled"] = True
         plan["calls"] = calls
+        self.audit_event(
+            "dispatch_finished",
+            calls_placed=sum(1 for item in calls if item.get("status") == "called"),
+            calls_total=len(calls),
+        )
         return plan
 
     def recent_history(self, limit: int = 20) -> list[dict[str, Any]]:
@@ -396,6 +468,7 @@ class SlotDispatchService:
         forecast: dict[str, Any],
         terminal_labels: dict[str, str],
         speditions: list[CanonicalSpedition],
+        alt_recommendation: dict[str, Any] | None = None,
     ) -> str:
         delay_min = max(1, int(round(int(forecast.get("predicted_delay_sec") or 0) / 60)))
         terminal = terminal_labels.get(slot["terminal_code"], slot["terminal_code"])
@@ -403,11 +476,19 @@ class SlotDispatchService:
         company = speditions[0]["company_name"] if speditions else "spedycja"
         booking = slot.get("booking_ref") or slot["slot_id"]
         corridor = forecast.get("corridor_name") or forecast.get("corridor_id") or "korytarz portowy"
+        if alt_recommendation:
+            alt_part = (
+                f" Propozycja: przesuń na {alt_recommendation.get('terminal_label')} "
+                f"o {alt_recommendation.get('window_local')} "
+                f"(+{alt_recommendation.get('slack_minutes')} min zapasu)."
+            )
+        else:
+            alt_part = " Rozważ opóźnienie wyjazdu lub trasę alternatywną."
         return (
             f"Uwaga, {company}. Port A I wykrył wysokie ryzyko opóźnienia na dojeździe do {terminal}. "
             f"Prognoza około {delay_min} minut na odcinku {corridor}. "
-            f"Dotyczy slotu bramowego o {slot_time}, rezerwacja {booking}. "
-            f"Rozważ opóźnienie wyjazdu lub trasę alternatywną."
+            f"Dotyczy slotu bramowego o {slot_time}, rezerwacja {booking}."
+            f"{alt_part}"
         )
 
     def _format_slot_local(self, slot: CanonicalSlot) -> str:

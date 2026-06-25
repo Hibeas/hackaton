@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   CircleMarker,
   GeoJSON,
@@ -33,6 +33,13 @@ import {
   CorridorReportPopup,
   PortCorridorsLayer,
 } from './CorridorMapLayers'
+import { ForecastPulsePopups } from './ForecastPulsePopup'
+import type { CorridorPulseDetail } from '../utils/forecastPulseReport'
+import { MapInvalidateSize } from '../hooks/useMapInvalidateSize'
+import {
+  causeLegendDotColor,
+  LEGEND_CAUSE_CATEGORIES,
+} from '../utils/forecastPulseVisual'
 
 interface TrafficMapProps {
   primary: MapDataLayer
@@ -45,6 +52,12 @@ interface TrafficMapProps {
   focusPolygon?: LatLng[] | null
   selectedPort?: PortConfig
   selectedCorridorId?: string | null
+  activePulseByCorridor?: Map<string, CorridorPulseDetail>
+  pulseNow?: number
+  activeForecastPulses?: CorridorPulseDetail[]
+  layoutKey?: boolean
+  pulsePanBbox?: CorridorBbox | null
+  onPulsePanComplete?: () => void
   corridorReport?: OperationalReport | null
   reportPopupPosition?: [number, number] | null
   onCorridorSelect?: (corridorId: string) => void
@@ -65,6 +78,32 @@ function FlyToBbox({ bbox }: { bbox?: CorridorBbox | null }) {
       { padding: [48, 48], maxZoom: 14 },
     )
   }, [bbox, map])
+
+  return null
+}
+
+function FlyToPulseBbox({
+  bbox,
+  onComplete,
+}: {
+  bbox?: CorridorBbox | null
+  onComplete?: () => void
+}) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!bbox) {
+      return
+    }
+    map.fitBounds(
+      [
+        [bbox.min_lat, bbox.min_lon],
+        [bbox.max_lat, bbox.max_lon],
+      ],
+      { padding: [64, 64], maxZoom: 13 },
+    )
+    onComplete?.()
+  }, [bbox, map, onComplete])
 
   return null
 }
@@ -233,6 +272,37 @@ function ContextVehicleMarkers({ vehicles }: { vehicles: TrafficEvent[] }) {
   )
 }
 
+function ForecastPulseLegend({ pulses }: { pulses: CorridorPulseDetail[] }) {
+  const { t } = useTranslation()
+
+  if (pulses.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="map-pulse-legend" aria-hidden>
+      <span className="map-pulse-legend__kind">
+        <span className="map-pulse-legend__line map-pulse-legend__line--proactive" />
+        {t('map.pulse.legend.proactive')}
+      </span>
+      <span className="map-pulse-legend__kind">
+        <span className="map-pulse-legend__line map-pulse-legend__line--validated" />
+        {t('map.pulse.legend.validated')}
+      </span>
+      <span className="map-pulse-legend__divider" />
+      {LEGEND_CAUSE_CATEGORIES.map((category) => (
+        <span key={category} className="map-pulse-legend__cause">
+          <span
+            className="map-pulse-legend__dot"
+            style={{ backgroundColor: causeLegendDotColor(category) }}
+          />
+          {t(`map.pulse.cause.${category}`)}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export function TrafficMap({
   primary,
   context,
@@ -244,10 +314,17 @@ export function TrafficMap({
   focusPolygon,
   selectedPort,
   selectedCorridorId = null,
+  activePulseByCorridor,
+  pulseNow = 0,
+  activeForecastPulses = [],
+  layoutKey,
+  pulsePanBbox = null,
+  onPulsePanComplete,
   corridorReport = null,
   reportPopupPosition = null,
   onCorridorSelect,
 }: TrafficMapProps) {
+  const mapShellRef = useRef<HTMLDivElement>(null)
   const visibleTerminals = useMemo(() => filterVisibleTerminals(terminals), [terminals])
 
   const { segments, vehicles } = useMemo(
@@ -256,7 +333,12 @@ export function TrafficMap({
   )
 
   return (
-    <div className="map-shell">
+    <div className="map-shell" ref={mapShellRef}>
+      {activeForecastPulses.length > 0 ? (
+        <div className="map-toolbar map-toolbar--bottom">
+          <ForecastPulseLegend pulses={activeForecastPulses} />
+        </div>
+      ) : null}
       <MapContainer
         center={MAP_DEFAULT_CENTER}
         zoom={MAP_DEFAULT_ZOOM}
@@ -287,6 +369,8 @@ export function TrafficMap({
           <PortCorridorsLayer
             port={selectedPort}
             selectedCorridorId={selectedCorridorId}
+            activePulseByCorridor={activePulseByCorridor}
+            pulseNow={pulseNow}
             onCorridorSelect={onCorridorSelect}
           />
         ) : null}
@@ -294,8 +378,11 @@ export function TrafficMap({
         <ContextVehicleMarkers vehicles={vehicles} />
         <IncidentLayer incidents={primary.events} />
         <CorridorHighlight bbox={focusBbox} polygon={focusPolygon} />
+        <ForecastPulsePopups pulses={activeForecastPulses} />
         <CorridorReportPopup position={reportPopupPosition} report={corridorReport} />
         <FlyToBbox bbox={focusBbox} />
+        <FlyToPulseBbox bbox={pulsePanBbox} onComplete={onPulsePanComplete} />
+        <MapInvalidateSize containerRef={mapShellRef} layoutKey={layoutKey} />
       </MapContainer>
     </div>
   )

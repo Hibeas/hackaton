@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { BottleneckItem, CorridorSnapshot, EngineEvent } from '../types/engine'
 import { formatDateTime, formatDuration, formatPercent, formatRatio } from '../utils/trafficFormat'
+import { MetricLabel } from './MetricHint'
 
 const DISPATCH_COLORS: Record<string, string> = {
   HOLD_DISPATCH: 'var(--color-verdict-anomaly)',
@@ -141,11 +142,15 @@ export function CorridorCard({
                 <dd>{metrics.incident_count}</dd>
               </div>
               <div>
-                <dt>{t('corridor.totalDelay')}</dt>
+                <dt>
+                  <MetricLabel metric="totalDelay">{t('corridor.totalDelay')}</MetricLabel>
+                </dt>
                 <dd>{formatDuration(metrics.total_delay_sec)}</dd>
               </div>
               <div>
-                <dt>{t('corridor.maxDelay')}</dt>
+                <dt>
+                  <MetricLabel metric="maxDelay">{t('corridor.maxDelay')}</MetricLabel>
+                </dt>
                 <dd>{formatDuration(metrics.max_delay_sec)}</dd>
               </div>
               <div>

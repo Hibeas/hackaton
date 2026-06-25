@@ -13,6 +13,9 @@
     }
   },
   "overview": {
+    "panelTitle": "Panel",
+    "expandPanel": "Rozwiń panel operacyjny",
+    "collapsePanel": "Zwiń panel operacyjny",
     "allClear": "Sytuacja spokojna",
     "allClearHint": "Brak aktywnych anomalii na wybranym porcie.",
     "activeAlerts": "{{count}} aktywnych alertów — wymaga uwagi",
@@ -22,6 +25,24 @@
     "kpiRoads": "Drogi TIR",
     "noRoadData": "Brak danych",
     "corridorHint": "Kliknij korytarz, aby rozwinąć szczegóły i podświetlić go na mapie."
+  },
+  "metricsHelp": {
+    "totalDelay": {
+      "title": "Suma opóźnień",
+      "body": "Łączny czas opóźnienia na wszystkich monitorowanych odcinkach korytarza w bieżącym pomiarze (TomTom/ZTM). Pokazuje skalę problemu na całej trasie dojazdu."
+    },
+    "maxDelay": {
+      "title": "Maks. opóźnienie",
+      "body": "Największe opóźnienie na pojedynczym fragmencie korytarza — wskazuje najgorszy punkt wąskiego gardła, nawet gdy średnia jest niższa."
+    },
+    "forecast": {
+      "title": "Prognoza",
+      "body": "Szacowane opóźnienie za wybrany horyzont (np. 60 min), z trendu obserwacji, bufora Kafka lub modelu ML. Pomaga ocenić, czy sytuacja się pogorszy."
+    },
+    "stress60min": {
+      "title": "Stres 60 min",
+      "body": "Wskaźnik wąskiego gardła z ostatniej godziny: jak bardzo ruch odbiega od normy (opóźnienia, prędkość). Im wyższy, tym większe ryzyko korków przy dojeździe do bramy."
+    }
   },
   "corridor": {
     "anomalySection": "Wykryta anomalia",
@@ -221,6 +242,47 @@
     "terminalsLayer": "Terminale ({{count}})",
     "tirZonesLayer": "Strefy TIR ({{count}})",
     "renderError": "Błąd renderowania mapy — odśwież stronę",
+    "pulse": {
+      "proactive": "Prognoza: uwaga na korytarz {{corridor}}",
+      "validated": "Prognoza potwierdzona — alert na korytarzu {{corridor}}",
+      "severity": {
+        "low": "Niski",
+        "medium": "Średni",
+        "high": "Wysoki",
+        "critical": "Krytyczny"
+      },
+      "importance": {
+        "monitor": "Monitor",
+        "caution": "Obserwacja",
+        "action": "Działanie",
+        "critical": "Krytyczny"
+      },
+      "popup": {
+        "predictedTag": "Prognoza",
+        "validatedTag": "Potwierdzona",
+        "inHorizon": "za {{count}} min",
+        "now": "teraz {{delay}}",
+        "whyUnknown": "Przyczyna nieznana",
+        "noTerminal": "brak terminala",
+        "operationalLine": "{{access}} ({{terminals}}) · za {{horizon}} min · teraz {{current}}",
+        "confidenceChip": {
+          "high": "Wysoka",
+          "medium": "Średnia",
+          "low": "Niska"
+        }
+      },
+      "cause": {
+        "accident": "Wypadek",
+        "congestion": "Korek",
+        "roadworks": "Roboty",
+        "weather": "Pogoda",
+        "unknown": "Nieznana"
+      },
+      "legend": {
+        "proactive": "Prognoza",
+        "validated": "Potwierdzona"
+      }
+    },
     "report": {
       "what": "Co się dzieje",
       "why": "Prawdopodobna przyczyna",
@@ -237,7 +299,56 @@
       "recommendForecastHigh": "Prognoza wskazuje wysokie opóźnienie ({{delay}}) — rozważ opóźnienie wyjazdów i weryfikację slotów bramowych.",
       "forecastLine": "Prognoza za {{horizon}} min: ok. {{delay}}.",
       "bottleneckLine": "W rankingu wąskich gardeł (60 min): poz. {{rank}}, stres {{stress}}.",
-      "forecastShort": "+{{horizon}} min: ~{{delay}} s"
+      "forecastShort": "+{{horizon}} min: ~{{delay}} s",
+      "copy": "Kopiuj raport",
+      "copied": "Skopiowano",
+      "copyError": "Błąd kopiowania",
+      "download": "Pobierz .txt"
+    }
+  },
+  "portCompare": {
+    "title": "Porównanie portów",
+    "leader": "Najwyższy stres ruchu: {{port}}",
+    "maxDelay": "Maks. opóźnienie",
+    "forecast": "Prognoza",
+    "stress": "Stres 60 min"
+  },
+  "slotRecommend": {
+    "title": "Rekomendowane sloty bramowe",
+    "suggestionTitle": "Sugestia slotów na dojazd",
+    "suggestionIntro": "Korytarz {{corridor}} — propozycje okien bramowych tylko przy podwyższonym obciążeniu lub sytuacji nadzwyczajnej.",
+    "extraordinaryTag": "Sytuacja podwyższona",
+    "suggestionIdle": "Przy bieżącym ruchu nie proponujemy zmiany okna bramowego.",
+    "selectCorridor": "Wybierz korytarz, aby zobaczyć propozycje slotów.",
+    "loading": "Szukam wolnych okien…",
+    "error": "Nie udało się pobrać rekomendacji slotów.",
+    "empty": "Brak późniejszych slotów na dziś dla tego korytarza.",
+    "slack": "+{{minutes}} min zapasu",
+    "apply": "Użyj",
+    "reason": {
+      "comfortable": "Komfortowy zapas czasu",
+      "tight": "Wąski, ale możliwy",
+      "at_risk": "Slot oznaczony at_risk"
+    }
+  },
+  "dispatchAudit": {
+    "title": "Dziennik dispatch",
+    "openButton": "Dziennik dispatch",
+    "subtitle": "Tylko do wglądu: historia automatycznych planów alertów i połączeń do spedycji. Nie wpływa na bieżące operacje.",
+    "close": "Zamknij",
+    "hint": "Historia planów i połączeń głosowych (ostatnie zdarzenia).",
+    "refresh": "Odśwież",
+    "loading": "Ładowanie…",
+    "error": "Nie udało się pobrać audytu.",
+    "empty": "Brak zdarzeń dispatch — uruchom spike lub auto-dispatch.",
+    "events": {
+      "plan_generated": "Wygenerowano plan alertów",
+      "dispatch_dry_run": "Dispatch dry-run",
+      "dispatch_started": "Rozpoczęto dispatch",
+      "dispatch_finished": "Zakończono dispatch",
+      "call_placed": "Połączenie wykonane",
+      "call_skipped": "Połączenie pominięte",
+      "call_failed": "Błąd połączenia"
     }
   },
   "portOps": {
@@ -269,6 +380,85 @@
     "selectCorridor": "Wybierz korytarz",
     "selectCorridorHint": "Kliknij korytarz w panelu bocznym, aby pokazać sztuczny tłum",
     "buttonHint": "Heatmapa + incydenty demo na {{corridor}} (120→960 s opóźnienia)"
+  },
+  "demoAction": {
+    "panel": "Demo korytarza",
+    "panelHint": "Incydent lub test predykcji na {{corridor}}",
+    "menuHint": "Wybierz scenariusz demo",
+    "selectCorridor": "Wybierz korytarz",
+    "selectCorridorHint": "Kliknij korytarz w panelu bocznym, aby uruchomić incydent",
+    "openMenuHint": "Otwórz menu demo — test predykcji nie wymaga wyboru korytarza",
+    "runningIncident": "Incydent…",
+    "runningIncidentVoice": "Incydent + głos…",
+    "runningStress": "Test predykcji…",
+    "incident": "Incydent na korytarzu",
+    "incidentDesc": "Kafka, prognozy, sloty, mapa — bez połączenia",
+    "incidentVoice": "Incydent + alert głosowy",
+    "incidentVoiceDesc": "Ten sam scenariusz + opcjonalny dispatch do spedycji",
+    "incidentOk": "Incydent wstrzyknięty do pipeline",
+    "incidentBadge": "Incydent (backtest)",
+    "incidentVoiceBadge": "Incydent + głos",
+    "stress": "Test predykcji",
+    "stressDesc": "Losowe miasto + ekstremalny zator (30 min) — walidacja prognoz",
+    "stressOk": "Predykcje OK — sprawdź mapę i sidebar",
+    "stressPartial": "Test zakończony — część progów nie spełniona",
+    "stressTitle": "Walidacja predykcji",
+    "stressValidationTitle": "Sprawdzenie silnika predykcji",
+    "stressValidationSummary": "Wstrzyknięto ~{{peak}} min, max prognoza ~{{max}} min, istotność: {{importance}}",
+    "stressPassed": "Predykcje OK",
+    "stressFailed": "Wymaga uwagi",
+    "mlKafka": "ML vs Kafka",
+    "mlKafkaDesc": "Porównanie kafka_trend i ml_historical po spike",
+    "mlKafkaTitle": "Porównanie metod",
+    "mlKafkaTableTitle": "kafka_trend vs ml_historical",
+    "mlKafkaSummary": "Oczekiwany rozjazd >{{threshold}}% po spike — horyzonty: {{diverged}}",
+    "mlKafkaExplain": "kafka_trend reaguje na wstrzyknięty korek. ml_historical to baseline (godzina/dzień/lokalizacja) — nie widzi bieżącego spike'a. Niski wynik ML nie jest błędem.",
+    "mlKafkaPassed": "Rozjazd wykryty — OK",
+    "mlKafkaFailed": "Test niezaliczony",
+    "mlKafkaValidationTitle": "Sprawdzenie fusion ML + Kafka",
+    "mlKafkaOk": "Fusion OK — Kafka zareagował, ML na baseline",
+    "mlKafkaPartial": "Test zakończony — część progów nie spełniona",
+    "delaySeconds": "{{sec}} s",
+    "delayMinutes": "{{min}} min",
+    "delayUnavailable": "brak",
+    "divergenceExpected": "oczekiwany",
+    "divergenceExpectedHint": "Rozjazd po spike jest zamierzony — ML nie widzi live danych",
+    "divergenceUnexpectedHint": "Niespodziewany rozjazd — sprawdź konfigurację",
+    "runningMlKafka": "ML vs Kafka…",
+    "decay": "Test zaniku",
+    "decayDesc": "Spike → plateau niskich opóźnień — spadek istotności i pulsu",
+    "decayTitle": "Zanik korka",
+    "decayPhasesTitle": "Fazy scenariusza",
+    "decayPhaseSpike": "Po spike",
+    "decayPhaseRecovery": "Po zaniku",
+    "decayImportance": "Istotność",
+    "decayPulse": "Puls mapy",
+    "decayOk": "Zanik OK — istotność i puls spadły",
+    "decayPartial": "Test zaniku — część progów nie spełniona",
+    "decayPassedBadge": "Zanik OK",
+    "decayFailedBadge": "Zanik — uwaga",
+    "decayValidationTitle": "Sprawdzenie zaniku korka",
+    "runningDecay": "Test zaniku…",
+    "horizonCol": "Horyzont",
+    "divergenceCol": "Rozjazd",
+    "yes": "tak",
+    "no": "nie",
+    "needsCorridor": "Wybierz korytarz w panelu bocznym",
+    "title": "Działanie",
+    "reportTitle": "Raport testowy",
+    "driver": "Kierowca",
+    "dispatcher": "Dyspozytor",
+    "altSlots": "Sloty alternatywne",
+    "minSlack": "min zapasu",
+    "voiceStatus": "Status połączenia",
+    "technicalDetails": "Szczegóły techniczne",
+    "backtestBadge": "Backtest — wpływa na prognozy i sloty",
+    "spikeBadge": "Spike (głos opcjonalny)",
+    "spikeNoVoice": "Spike OK — bez połączenia głosowego",
+    "spikeVoiceSkipped": "Głos pominięty — brak VOICE_CALL_DEMO_TO lub Twilio/ElevenLabs w .env",
+    "errorHint": "Sprawdź logi backendu i konfigurację demo",
+    "errorEndpointMissing": "Brak endpointu demo na backendzie — zrestartuj serwer (uvicorn) po aktualizacji kodu",
+    "errorNoApproachCorridors": "Brak korytarzy dojazdowych w konfiguracji dla tego portu"
   },
   "spikeDemo": {
     "button": "Test spike",

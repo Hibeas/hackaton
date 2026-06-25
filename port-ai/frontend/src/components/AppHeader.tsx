@@ -9,8 +9,7 @@ import {
 } from '../constants/forecast'
 import { useAuth } from '../context/AuthContext'
 import { LanguageSwitcher } from './LanguageSwitcher'
-import { CorridorSpikeDemoButton } from './CorridorSpikeDemoButton'
-import { CrowdMapDemoButton } from './CrowdMapDemoButton'
+import { CorridorDemoPanel } from './CorridorDemoPanel'
 import type { CrowdMapOverlayResponse } from '../types/traffic'
 
 interface AppHeaderProps {
@@ -19,8 +18,8 @@ interface AppHeaderProps {
   onPortSelect: (portId: string) => void
   selectedCorridorId: string | null
   selectedCorridorName: string | null
-  onSpikeDemoComplete?: () => void
-  crowdOverlay: CrowdMapOverlayResponse | null
+  onDemoComplete?: () => void
+  onCorridorFocus?: (corridorId: string, portId: string) => void
   onCrowdOverlayChange: (overlay: CrowdMapOverlayResponse | null) => void
   dashboardMode: DashboardMode
   onDashboardModeChange: (mode: DashboardMode) => void
@@ -40,8 +39,8 @@ export function AppHeader({
   isLive,
   selectedCorridorId,
   selectedCorridorName,
-  onSpikeDemoComplete,
-  crowdOverlay,
+  onDemoComplete,
+  onCorridorFocus,
   onCrowdOverlayChange,
 }: AppHeaderProps) {
   const { t } = useTranslation()
@@ -109,16 +108,13 @@ export function AppHeader({
       </div>
 
       <div className="app-header__actions">
-        <CrowdMapDemoButton
+        <CorridorDemoPanel
+          selectedPortId={selectedPortId}
           selectedCorridorId={selectedCorridorId}
           selectedCorridorName={selectedCorridorName}
-          activeOverlay={crowdOverlay}
-          onOverlayChange={onCrowdOverlayChange}
-        />
-        <CorridorSpikeDemoButton
-          selectedCorridorId={selectedCorridorId}
-          selectedCorridorName={selectedCorridorName}
-          onComplete={onSpikeDemoComplete}
+          onDemoComplete={onDemoComplete}
+          onCorridorFocus={onCorridorFocus}
+          onCrowdOverlayChange={onCrowdOverlayChange}
         />
         <a className="app-header__link" href="#/corridor-editor">
           {t('corridorEditor.navLink')}

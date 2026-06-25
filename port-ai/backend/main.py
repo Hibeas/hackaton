@@ -38,7 +38,11 @@ from port_events import (
     build_port_summary,
     build_terminals_catalog,
 )
-from demo_baltic_spike_service import run_baltic_hub_spike_demo, run_corridor_spike_demo
+from demo_baltic_spike_service import run_baltic_hub_spike_demo
+from demo_corridor_incident_service import run_corridor_incident_demo
+from demo_prediction_stress_service import run_prediction_stress_demo
+from demo_ml_kafka_compare_service import run_ml_kafka_compare_demo
+from demo_decay_recovery_service import run_decay_recovery_demo
 from synthetic_crowd_map import build_crowd_map_payload
 from hybrid_delay_forecaster import DEFAULT_HORIZONS, build_forecast_response
 from kafka_prediction_buffer import kafka_consumer_loop, kafka_prediction_buffer
@@ -47,6 +51,7 @@ from traffic_ml_predictor import load_model, ml_enabled, model_path, preload_mod
 from auth_service import (
     auth_configured,
     get_current_user,
+    get_optional_user,
     login_user,
     register_user,
 )
@@ -1259,6 +1264,9 @@ async def auth_register(body: AuthRegisterRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Register failed for %s", body.email)
+        raise HTTPException(status_code=500, detail="auth_register_failed") from exc
 
 
 @app.post("/api/v1/auth/login")
@@ -1271,6 +1279,9 @@ async def auth_login(body: AuthLoginRequest) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Login failed for %s", body.email)
+        raise HTTPException(status_code=500, detail="auth_login_failed") from exc
 
 
 @app.get("/api/v1/auth/me")
@@ -1413,6 +1424,31 @@ async def get_slot_dispatch_history(limit: int = Query(default=20, ge=1, le=100)
     return {"calls": slot_dispatch_service.recent_history(limit=limit)}
 
 
+@app.get("/api/v1/tms/dispatch/audit")
+async def get_slot_dispatch_audit(limit: int = Query(default=40, ge=1, le=200)) -> dict[str, Any]:
+    """Operational audit trail for slot dispatch (plans, calls, skips)."""
+    return {"entries": slot_dispatch_service.recent_audit(limit=limit)}
+
+
+@app.get("/api/v1/tms/recommend-slots")
+async def get_slot_recommendations(
+    corridor_id: str = Query(..., min_length=1, max_length=120),
+    predicted_delay_sec: int = Query(default=0, ge=0, le=7200),
+    limit: int = Query(default=3, ge=1, le=5),
+) -> dict[str, Any]:
+    """Suggest later gate slots when corridor delay threatens arrival."""
+    from slot_recommendation_service import recommend_slots_for_corridor
+
+    try:
+        return recommend_slots_for_corridor(
+            corridor_id.strip(),
+            predicted_delay_sec=predicted_delay_sec,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 class BalticHubSpikeRequest(BaseModel):
     phone_e164: str | None = Field(default=None, description="Override call target (default VOICE_CALL_DEMO_TO)")
     dry_run: bool = Field(default=False)
@@ -1424,6 +1460,41 @@ class CorridorSpikeRequest(BaseModel):
     phone_e164: str | None = Field(default=None, description="Override call target (default VOICE_CALL_DEMO_TO)")
     dry_run: bool = Field(default=False, description="Skip voice calls")
     force: bool = Field(default=True, description="Bypass call cooldown")
+
+
+class CrowdScenarioRequest(BaseModel):
+    corridor_id: str = Field(..., min_length=1, max_length=120)
+    peak_delay_sec: int = Field(default=960, ge=60, le=3600)
+    start_delay_sec: int = Field(default=120, ge=0, le=1800)
+    incident_count: int = Field(default=6, ge=1, le=24)
+    mark_slots_at_risk: bool = Field(default=True)
+
+
+class CorridorIncidentRequest(BaseModel):
+    corridor_id: str = Field(..., min_length=1, max_length=120)
+    enable_voice: bool = Field(default=False, description="Book demo slot and attempt Twilio dispatch")
+    phone_e164: str | None = Field(default=None, description="Override call target (default VOICE_CALL_DEMO_TO)")
+    force: bool = Field(default=True, description="Bypass call cooldown when voice enabled")
+    peak_delay_sec: int = Field(default=960, ge=60, le=3600)
+    mark_slots_at_risk: bool = Field(default=True)
+
+
+class PredictionStressRequest(BaseModel):
+    port_id: str | None = Field(default=None, max_length=40)
+    peak_delay_sec: int = Field(default=1800, ge=600, le=3600)
+    mark_slots_at_risk: bool = Field(default=True)
+
+
+class MlKafkaCompareRequest(BaseModel):
+    port_id: str | None = Field(default=None, max_length=40)
+    corridor_id: str | None = Field(default=None, max_length=120)
+    peak_delay_sec: int = Field(default=960, ge=300, le=3600)
+
+
+class DecayRecoveryRequest(BaseModel):
+    port_id: str | None = Field(default=None, max_length=40)
+    corridor_id: str | None = Field(default=None, max_length=120)
+    peak_delay_sec: int = Field(default=960, ge=300, le=3600)
 
 
 @app.get("/api/v1/demo/crowd-map")
@@ -1443,30 +1514,194 @@ async def demo_crowd_map(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/demo/corridor-spike")
-async def demo_corridor_spike(
-    body: CorridorSpikeRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
+@app.post("/api/v1/demo/corridor-incident")
+async def demo_corridor_incident(
+    body: CorridorIncidentRequest,
+    current_user: dict[str, Any] | None = Depends(get_optional_user),
 ) -> dict[str, Any]:
-    """One-shot demo: inject synthetic delay spike on a corridor, book slot, call spedition."""
+    """Inject synthetic incident on selected corridor; optional voice dispatch."""
     phone = (
         os.environ.get("VOICE_CALL_DEMO_TO", "").strip()
         or (body.phone_e164 or "").strip()
     )
-    if not phone:
-        raise HTTPException(status_code=400, detail="voice_demo_to_missing")
-    if not body.dry_run and not is_voice_call_configured():
-        raise HTTPException(status_code=503, detail="voice_not_configured")
-    owner_user_id = str(current_user.get("id") or "").strip() or None
+    voice_ready = bool(phone) and is_voice_call_configured()
+    voice_enabled = body.enable_voice and voice_ready
+    slot_phone = phone or "+48000000000"
+    owner_user_id = str((current_user or {}).get("id") or "").strip() or None
     try:
-        return await run_corridor_spike_demo(
+        result = await run_corridor_incident_demo(
             corridor_id=body.corridor_id.strip(),
             observation_store=observation_store,
-            phone_e164=phone,
+            enable_voice=voice_enabled,
+            phone_e164=slot_phone,
             owner_user_id=owner_user_id,
-            dry_run=body.dry_run,
+            peak_delay_sec=body.peak_delay_sec,
+            mark_slots_at_risk=body.mark_slots_at_risk,
             force_call=body.force,
         )
+        result["voice"] = {
+            "requested": body.enable_voice,
+            "enabled": voice_enabled,
+            "skipped": body.enable_voice and not voice_enabled,
+            "reason": (
+                None
+                if voice_enabled or not body.enable_voice
+                else ("voice_demo_to_missing" if not phone else "voice_not_configured")
+            ),
+        }
+        return result
+    except ValueError as exc:
+        if str(exc).startswith("corridor_not_found"):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Corridor incident demo failed for %s", body.corridor_id)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/demo/prediction-stress")
+async def demo_prediction_stress(
+    body: PredictionStressRequest | None = None,
+    current_user: dict[str, Any] | None = Depends(get_optional_user),
+) -> dict[str, Any]:
+    """Random approach corridor + extreme delay to validate forecast / pulse pipeline."""
+    _ = current_user
+    payload = body or PredictionStressRequest()
+    port_filter = (payload.port_id or "").strip() or None
+    try:
+        return run_prediction_stress_demo(
+            observation_store=observation_store,
+            port_id=port_filter,
+            peak_delay_sec=payload.peak_delay_sec,
+            mark_slots_at_risk=payload.mark_slots_at_risk,
+        )
+    except ValueError as exc:
+        if str(exc) == "no_approach_corridors":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if str(exc).startswith("corridor_not_found"):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Prediction stress demo failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/demo/ml-kafka-compare")
+async def demo_ml_kafka_compare(
+    body: MlKafkaCompareRequest | None = None,
+    current_user: dict[str, Any] | None = Depends(get_optional_user),
+) -> dict[str, Any]:
+    """Inject spike and compare kafka_trend vs ml_historical per horizon."""
+    _ = current_user
+    payload = body or MlKafkaCompareRequest()
+    port_filter = (payload.port_id or "").strip() or None
+    corridor_filter = (payload.corridor_id or "").strip() or None
+    try:
+        return run_ml_kafka_compare_demo(
+            observation_store=observation_store,
+            port_id=port_filter,
+            corridor_id=corridor_filter,
+            peak_delay_sec=payload.peak_delay_sec,
+        )
+    except ValueError as exc:
+        if str(exc) == "no_approach_corridors":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if str(exc).startswith("corridor_not_found"):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("ML vs Kafka compare demo failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/demo/decay-recovery")
+async def demo_decay_recovery(
+    body: DecayRecoveryRequest | None = None,
+    current_user: dict[str, Any] | None = Depends(get_optional_user),
+) -> dict[str, Any]:
+    """Spike then declining samples — validate importance drop and pulse off."""
+    _ = current_user
+    payload = body or DecayRecoveryRequest()
+    port_filter = (payload.port_id or "").strip() or None
+    corridor_filter = (payload.corridor_id or "").strip() or None
+    try:
+        return run_decay_recovery_demo(
+            observation_store=observation_store,
+            port_id=port_filter,
+            corridor_id=corridor_filter,
+            peak_delay_sec=payload.peak_delay_sec,
+        )
+    except ValueError as exc:
+        if str(exc) == "no_approach_corridors":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if str(exc).startswith("corridor_not_found"):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Decay recovery demo failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/demo/crowd-scenario")
+async def demo_crowd_scenario(
+    body: CrowdScenarioRequest,
+    current_user: dict[str, Any] | None = Depends(get_optional_user),
+) -> dict[str, Any]:
+    """Backward-compatible alias for corridor incident without voice."""
+    _ = current_user
+    try:
+        return await run_corridor_incident_demo(
+            corridor_id=body.corridor_id.strip(),
+            observation_store=observation_store,
+            enable_voice=False,
+            peak_delay_sec=body.peak_delay_sec,
+            start_delay_sec=body.start_delay_sec,
+            incident_count=body.incident_count,
+            mark_slots_at_risk=body.mark_slots_at_risk,
+        )
+    except ValueError as exc:
+        if str(exc).startswith("corridor_not_found"):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Crowd scenario demo failed for %s", body.corridor_id)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/demo/corridor-spike")
+async def demo_corridor_spike(
+    body: CorridorSpikeRequest,
+    current_user: dict[str, Any] | None = Depends(get_optional_user),
+) -> dict[str, Any]:
+    """Backward-compatible alias — corridor incident with voice when configured."""
+    phone = (
+        os.environ.get("VOICE_CALL_DEMO_TO", "").strip()
+        or (body.phone_e164 or "").strip()
+    )
+    voice_ready = bool(phone) and is_voice_call_configured()
+    voice_enabled = voice_ready and not body.dry_run
+    slot_phone = phone or "+48000000000"
+    owner_user_id = str((current_user or {}).get("id") or "").strip() or None
+    try:
+        result = await run_corridor_incident_demo(
+            corridor_id=body.corridor_id.strip(),
+            observation_store=observation_store,
+            enable_voice=voice_enabled,
+            phone_e164=slot_phone,
+            owner_user_id=owner_user_id,
+            force_call=body.force,
+        )
+        result["voice"] = {
+            "requested": not body.dry_run,
+            "enabled": voice_enabled,
+            "skipped": not body.dry_run and not voice_enabled,
+            "reason": (
+                None
+                if voice_enabled or body.dry_run
+                else ("voice_demo_to_missing" if not phone else "voice_not_configured")
+            ),
+        }
+        return result
     except ValueError as exc:
         if str(exc).startswith("corridor_not_found"):
             raise HTTPException(status_code=404, detail=str(exc)) from exc

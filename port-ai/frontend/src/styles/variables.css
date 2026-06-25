@@ -59,9 +59,10 @@
   --font-size-xl: 1.125rem;
 
   /* Layout */
-  --header-height: 56px;
-  --sidebar-width: 380px;
-  --status-bar-height: 36px;
+  --header-height: clamp(48px, 5vh, 56px);
+  --sidebar-width: clamp(300px, 28vw, 380px);
+  --sidebar-width-collapsed: 48px;
+  --status-bar-height: 32px;
   --z-overlay: 1000;
   --z-sidebar: 900;
 

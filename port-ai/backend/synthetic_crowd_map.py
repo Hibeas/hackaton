@@ -47,12 +47,15 @@ def build_synthetic_crowd_events(
     peak_delay_sec: int = 960,
     start_delay_sec: int = 120,
     incident_count: int = 6,
+    primary_reason: str | None = None,
+    demo_tag: str = "demo_crowd",
 ) -> list[dict[str, Any]]:
     """TomTom-shaped incidents with rising delay along the corridor spine."""
     spine = _polygon_line_coords(corridor)
     city = str(corridor.get("city") or infer_city(spine[0][1], spine[0][0]))
     corridor_name = str(corridor.get("name") or corridor.get("id") or "Korytarz")
     now = datetime.now(timezone.utc).isoformat()
+    reason = primary_reason or "Sztuczny tłum (demo backtest)"
     events: list[dict[str, Any]] = []
 
     for index in range(incident_count):
@@ -88,14 +91,14 @@ def build_synthetic_crowd_events(
                     "length_m": 400 + index * 120,
                     "icon_category": icon_category,
                     "category_label": "Korek",
-                    "primary_reason": "Sztuczny tłum (demo backtest)",
+                    "primary_reason": reason,
                     "magnitude": magnitude,
                     "time_validity": "present",
                     "speed_kmh": 0,
                     "intensity_vph": None,
                 },
                 "status": status,
-                "synthetic_crowd": True,
+                demo_tag: True,
             }
         )
 
@@ -108,6 +111,8 @@ def build_crowd_map_payload(
     peak_delay_sec: int = 960,
     start_delay_sec: int = 120,
     incident_count: int = 6,
+    primary_reason: str | None = None,
+    demo_tag: str = "demo_crowd",
 ) -> dict[str, Any]:
     _port, corridor = find_corridor_by_id(corridor_id)
     events = build_synthetic_crowd_events(
@@ -115,6 +120,8 @@ def build_crowd_map_payload(
         peak_delay_sec=peak_delay_sec,
         start_delay_sec=start_delay_sec,
         incident_count=incident_count,
+        primary_reason=primary_reason,
+        demo_tag=demo_tag,
     )
     points = build_heatmap_points(events)
     return {

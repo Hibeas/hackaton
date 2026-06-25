@@ -365,11 +365,15 @@ def build_corridor_snapshots(
                 for event in corridor_primary
             ]
             causes: list[str] = []
-            for event in sorted(
+            top_event_metrics: dict[str, Any] = {}
+            sorted_primary = sorted(
                 corridor_primary,
                 key=lambda item: int((item.get("metrics") or {}).get("delay_sec") or 0),
                 reverse=True,
-            )[:3]:
+            )
+            if sorted_primary:
+                top_event_metrics = sorted_primary[0].get("metrics") or {}
+            for event in sorted_primary[:3]:
                 metrics = event.get("metrics") or {}
                 reason = metrics.get("primary_reason") or metrics.get("category_label") or "?"
                 road = (event.get("location") or {}).get("road_name") or "?"
@@ -400,6 +404,9 @@ def build_corridor_snapshots(
                         "avg_intensity_vph": _avg_intensity(corridor_context),
                         "demand_ratio": _demand_ratio(baseline, terminals, reference),
                         "top_incident_causes": causes,
+                        "primary_incident_category": int(
+                            top_event_metrics.get("icon_category") or 0
+                        ),
                     },
                 }
             )
